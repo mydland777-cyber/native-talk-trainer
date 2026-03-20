@@ -31,6 +31,7 @@ type AssistantMessage = {
 type Message = UserMessage | AssistantMessage;
 type SpeechStyle = "careful" | "natural" | "casual";
 type ScenarioKey = "cafe" | "airport" | "hotel" | "friends" | "business";
+type TargetLanguage = "english" | "korean" | "chinese";
 
 const SCENARIOS: {
   key: ScenarioKey;
@@ -76,12 +77,96 @@ const SCENARIOS: {
   },
 ];
 
-export default function ChatPage() {
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [speakingKey, setSpeakingKey] = useState<string | null>(null);
-  const [scenario, setScenario] = useState<ScenarioKey>("cafe");
-  const [messages, setMessages] = useState<Message[]>([
+const LANGUAGES: {
+  key: TargetLanguage;
+  label: string;
+  title: string;
+  pronunciationTitle: string;
+  audioTitle: string;
+  mainLabel: string;
+  placeholderHint: string;
+}[] = [
+  {
+    key: "english",
+    label: "英語",
+    title: "English",
+    pronunciationTitle: "Pronunciation",
+    audioTitle: "Audio",
+    mainLabel: "English",
+    placeholderHint: "英語を練習",
+  },
+  {
+    key: "korean",
+    label: "韓国語",
+    title: "Korean",
+    pronunciationTitle: "韓国語フレーズ",
+    audioTitle: "Audio",
+    mainLabel: "Korean",
+    placeholderHint: "韓国語を練習",
+  },
+  {
+    key: "chinese",
+    label: "中国語",
+    title: "Chinese",
+    pronunciationTitle: "中国語フレーズ",
+    audioTitle: "Audio",
+    mainLabel: "Chinese",
+    placeholderHint: "中国語を練習",
+  },
+];
+
+function getInitialMessages(language: TargetLanguage): Message[] {
+  if (language === "korean") {
+    return [
+      {
+        role: "user",
+        text: "カフェで『アイスラテください』って自然な韓国語で言いたい",
+      },
+      {
+        role: "assistant",
+        english: "아이스 라떼 하나 주세요.",
+        japanese: "アイスラテを1つください。",
+        careful: "아이스 라떼 하나 주세요.",
+        natural: "아이스 라떼 하나 주세요.",
+        casual: "아이스 라떼 한 잔 주세요.",
+        carefulKana: "アイス ラテ ハナ ジュセヨ",
+        naturalKana: "アイス ラテ ハナ ジュセヨ",
+        casualKana: "アイス ラテ ハンジャン ジュセヨ",
+        explanation: [
+          "注文では 주세요 を使うと自然で使いやすい",
+          "하나 は 1つ、한 잔 は 1杯の感覚で、どちらも会話で使いやすい",
+          "カタカナは聞こえ方の大まかな目安として使うのがおすすめ",
+        ],
+      },
+    ];
+  }
+
+  if (language === "chinese") {
+    return [
+      {
+        role: "user",
+        text: "カフェで『アイスラテください』って自然な中国語で言いたい",
+      },
+      {
+        role: "assistant",
+        english: "请给我一杯冰拿铁。",
+        japanese: "アイスラテを1杯ください。",
+        careful: "请给我一杯冰拿铁。",
+        natural: "我想要一杯冰拿铁。",
+        casual: "一杯冰拿铁，谢谢。",
+        carefulKana: "チン ゲイ ウォ イーベイ ビン ナーティエ",
+        naturalKana: "ウォ シャンヤオ イーベイ ビン ナーティエ",
+        casualKana: "イーベイ ビン ナーティエ シエシエ",
+        explanation: [
+          "店員に頼む場面では短く自然な形にした",
+          "请给我... は丁寧、我想要... は少し会話っぽく使いやすい",
+          "カタカナは発音の完全再現ではなく聞こえ方の目安として見るとよい",
+        ],
+      },
+    ];
+  }
+
+  return [
     {
       role: "user",
       text: "カフェで『アイスラテください』って自然に言いたい",
@@ -102,7 +187,18 @@ export default function ChatPage() {
         "まず English をそのまま言えるようにしてから、natural / casual の聞こえ方に慣れるのがおすすめ",
       ],
     },
-  ]);
+  ];
+}
+
+export default function ChatPage() {
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [speakingKey, setSpeakingKey] = useState<string | null>(null);
+  const [scenario, setScenario] = useState<ScenarioKey>("cafe");
+  const [language, setLanguage] = useState<TargetLanguage>("english");
+  const [messages, setMessages] = useState<Message[]>(() =>
+    getInitialMessages("english")
+  );
 
   const endRef = useRef<HTMLDivElement | null>(null);
 
@@ -113,9 +209,23 @@ export default function ChatPage() {
     });
   }, [messages, loading]);
 
+  useEffect(() => {
+    setMessages(getInitialMessages(language));
+    setInput("");
+    setSpeakingKey(null);
+  }, [language]);
+
   const currentScenario = useMemo(() => {
     return SCENARIOS.find((item) => item.key === scenario) ?? SCENARIOS[0];
   }, [scenario]);
+
+  const currentLanguage = useMemo(() => {
+    return LANGUAGES.find((item) => item.key === language) ?? LANGUAGES[0];
+  }, [language]);
+
+  const currentPlaceholder = useMemo(() => {
+    return `${currentScenario.placeholder} / ${currentLanguage.placeholderHint}`;
+  }, [currentScenario, currentLanguage]);
 
   async function submitMessage() {
     const value = input.trim();
@@ -139,6 +249,7 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: value,
           scenario,
+          language,
         }),
       });
 
@@ -172,14 +283,49 @@ export default function ChatPage() {
         ...prev,
         {
           role: "assistant",
-          english: "Sorry, something went wrong.",
+          english:
+            language === "korean"
+              ? "죄송합니다. 오류가 발생했습니다."
+              : language === "chinese"
+              ? "抱歉，发生错误了。"
+              : "Sorry, something went wrong.",
           japanese: "エラーが発生しました。",
-          careful: "Sorry, something went wrong.",
-          natural: "Sorry, something went wrong.",
-          casual: "Sorry, somethin' went wrong.",
-          carefulKana: "ソーリー、サムシング ウェント ロング",
-          naturalKana: "ソーリー、サムシング ウェント ロング",
-          casualKana: "ソーリー、サムシン ウェント ロング",
+          careful:
+            language === "korean"
+              ? "죄송합니다. 오류가 발생했습니다."
+              : language === "chinese"
+              ? "抱歉，发生错误了。"
+              : "Sorry, something went wrong.",
+          natural:
+            language === "korean"
+              ? "죄송합니다. 오류가 발생했습니다."
+              : language === "chinese"
+              ? "抱歉，出问题了。"
+              : "Sorry, something went wrong.",
+          casual:
+            language === "korean"
+              ? "앗, 오류가 났어요."
+              : language === "chinese"
+              ? "啊，出问题了。"
+              : "Sorry, somethin' went wrong.",
+          carefulKana:
+            language === "korean"
+              ? "チェソンハムニダ オリュガ バレッスムニダ"
+              : language === "chinese"
+              ? "バオチェン ファーション ツオウラ"
+              : "ソーリー、サムシング ウェント ロング",
+          naturalKana:
+            language === "korean"
+              ? "チェソンハムニダ オリュガ バレッスムニダ"
+              : language === "chinese"
+              ? "バオチェン チュ ウェンティラ"
+              : "ソーリー、サムシング ウェント ロング",
+          casualKana:
+            language === "korean"
+              ? "アッ オリュガ ナッソヨ"
+              : language === "chinese"
+              ? "アー チュ ウェンティラ"
+              : "ソーリー、サムシン ウェント ロング",
           explanation: [`error: ${message}`],
         },
       ]);
@@ -193,9 +339,7 @@ export default function ChatPage() {
     await submitMessage();
   }
 
-  async function handleKeyDown(
-    e: KeyboardEvent<HTMLTextAreaElement>
-  ) {
+  async function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       await submitMessage();
@@ -217,7 +361,7 @@ export default function ChatPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ text, style }),
+        body: JSON.stringify({ text, style, language }),
       });
 
       if (!res.ok) {
@@ -343,6 +487,51 @@ export default function ChatPage() {
               fontWeight: 700,
             }}
           >
+            LANGUAGE
+          </p>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: "10px",
+              marginBottom: "18px",
+            }}
+          >
+            {LANGUAGES.map((item) => {
+              const active = item.key === language;
+
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setLanguage(item.key)}
+                  style={{
+                    background: active ? "#7db3ff" : "#0b111d",
+                    color: active ? "#07101d" : "#dbe4f3",
+                    border: active ? "1px solid #7db3ff" : "1px solid #22304a",
+                    borderRadius: "14px",
+                    padding: "12px 14px",
+                    fontWeight: 800,
+                    fontSize: "14px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <p
+            style={{
+              margin: "0 0 12px 0",
+              fontSize: "12px",
+              color: "#8fa7cc",
+              letterSpacing: "0.12em",
+              fontWeight: 700,
+            }}
+          >
             SCENARIO
           </p>
 
@@ -414,7 +603,7 @@ export default function ChatPage() {
                 color: "#8fa7cc",
               }}
             >
-              入力例: {currentScenario.placeholder}
+              入力例: {currentPlaceholder}
             </p>
           </div>
         </section>
@@ -534,7 +723,7 @@ export default function ChatPage() {
                         textTransform: "uppercase",
                       }}
                     >
-                      English
+                      {currentLanguage.mainLabel}
                     </h2>
                     <p
                       style={{
@@ -598,7 +787,7 @@ export default function ChatPage() {
                         color: "#d7e6ff",
                       }}
                     >
-                      Pronunciation
+                      {currentLanguage.pronunciationTitle}
                     </h2>
 
                     <div
@@ -877,7 +1066,7 @@ export default function ChatPage() {
                         color: "#d7e6ff",
                       }}
                     >
-                      Audio
+                      {currentLanguage.audioTitle}
                     </h2>
 
                     <div
@@ -998,7 +1187,7 @@ export default function ChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={currentScenario.placeholder}
+            placeholder={currentPlaceholder}
             rows={3}
             style={{
               flex: 1,
