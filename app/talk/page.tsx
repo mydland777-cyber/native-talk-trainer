@@ -56,6 +56,16 @@ function formatTalkText(text: string) {
     .trim();
 }
 
+function isAutoplayBlockedError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return (
+    message.includes("not allowed") ||
+    message.includes("user agent") ||
+    message.includes("denied permission") ||
+    message.includes("play() failed")
+  );
+}
+
 export default function TalkPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -148,8 +158,14 @@ export default function TalkPage() {
     };
   }, []);
 
-  async function playSpeech(text: string, index: number) {
+  async function playSpeech(
+    text: string,
+    index: number,
+    options?: { silent?: boolean }
+  ) {
     if (!text.trim()) return;
+
+    const silent = options?.silent === true;
 
     try {
       setSpeakingIndex(index);
@@ -202,6 +218,10 @@ export default function TalkPage() {
       console.error(error);
       setSpeakingIndex(null);
 
+      if (silent && isAutoplayBlockedError(error)) {
+        return;
+      }
+
       const message =
         error instanceof Error ? error.message : "音声の再生に失敗しました。";
 
@@ -210,7 +230,7 @@ export default function TalkPage() {
   }
 
   async function handleSpeak(text: string, index: number) {
-    await playSpeech(text, index);
+    await playSpeech(text, index, { silent: false });
   }
 
   function handleMicClick() {
@@ -276,7 +296,9 @@ export default function TalkPage() {
 
       if (assistantMessage.english.trim()) {
         setTimeout(() => {
-          void playSpeech(assistantMessage.english, nextIndex);
+          void playSpeech(assistantMessage.english, nextIndex, {
+            silent: true,
+          });
         }, 120);
       }
     } catch (error) {
@@ -315,7 +337,7 @@ export default function TalkPage() {
         background:
           "radial-gradient(circle at top, rgba(33,62,110,0.22), transparent 28%), #05070d",
         color: "#f5f7ff",
-        padding: "24px 16px 40px",
+        padding: "16px 12px 28px",
       }}
     >
       <div
@@ -329,12 +351,12 @@ export default function TalkPage() {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            gap: "16px",
-            marginBottom: "24px",
+            gap: "12px",
+            marginBottom: "18px",
             flexWrap: "wrap",
           }}
         >
-          <div>
+          <div style={{ flex: "1 1 320px" }}>
             <p
               style={{
                 margin: 0,
@@ -348,8 +370,8 @@ export default function TalkPage() {
             </p>
             <h1
               style={{
-                margin: "10px 0 0 0",
-                fontSize: "32px",
+                margin: "8px 0 0 0",
+                fontSize: "clamp(26px, 7vw, 32px)",
                 lineHeight: 1.2,
                 color: "#f8fbff",
               }}
@@ -358,7 +380,7 @@ export default function TalkPage() {
             </h1>
             <p
               style={{
-                margin: "10px 0 0 0",
+                margin: "8px 0 0 0",
                 fontSize: "14px",
                 color: "#94a3b8",
                 lineHeight: 1.7,
@@ -371,7 +393,7 @@ export default function TalkPage() {
           <div
             style={{
               display: "flex",
-              gap: "14px",
+              gap: "12px",
               flexWrap: "wrap",
             }}
           >
@@ -403,17 +425,17 @@ export default function TalkPage() {
 
         <section
           style={{
-            marginBottom: "20px",
+            marginBottom: "16px",
             background: "rgba(13,17,26,0.94)",
             border: "1px solid #1c2538",
-            borderRadius: "22px",
-            padding: "18px",
+            borderRadius: "18px",
+            padding: "14px",
             boxShadow: "0 16px 40px rgba(0,0,0,0.25)",
           }}
         >
           <p
             style={{
-              margin: "0 0 10px 0",
+              margin: "0 0 8px 0",
               fontSize: "12px",
               color: "#8fa7cc",
               letterSpacing: "0.12em",
@@ -441,9 +463,9 @@ export default function TalkPage() {
           style={{
             background: "rgba(13,17,26,0.92)",
             border: "1px solid #1c2538",
-            borderRadius: "24px",
-            padding: "20px",
-            minHeight: "480px",
+            borderRadius: "20px",
+            padding: "14px",
+            minHeight: "420px",
             boxShadow: "0 24px 80px rgba(0,0,0,0.45)",
           }}
         >
@@ -451,7 +473,7 @@ export default function TalkPage() {
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: "16px",
+              gap: "12px",
             }}
           >
             {messages.map((message, index) => {
@@ -461,19 +483,19 @@ export default function TalkPage() {
                     key={index}
                     style={{
                       alignSelf: "flex-end",
-                      width: "min(100%, 680px)",
+                      width: "100%",
                       display: "flex",
                       justifyContent: "flex-end",
                     }}
                   >
                     <div
                       style={{
-                        maxWidth: "78%",
+                        width: "min(100%, 320px)",
                         background:
                           "linear-gradient(180deg, #172133 0%, #111827 100%)",
                         border: "1px solid #25314a",
                         borderRadius: "18px",
-                        padding: "14px 16px",
+                        padding: "12px 14px",
                         boxShadow: "0 10px 30px rgba(0,0,0,0.22)",
                       }}
                     >
@@ -492,9 +514,10 @@ export default function TalkPage() {
                         style={{
                           margin: 0,
                           lineHeight: 1.8,
-                          fontSize: "15px",
+                          fontSize: "14px",
                           color: "#f4f7ff",
                           whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
                         }}
                       >
                         {formatTalkText(message.english)}
@@ -513,14 +536,14 @@ export default function TalkPage() {
                     background:
                       "linear-gradient(180deg, rgba(17,24,39,0.98) 0%, rgba(12,18,30,0.98) 100%)",
                     border: "1px solid #22304a",
-                    borderRadius: "22px",
-                    padding: "20px",
+                    borderRadius: "20px",
+                    padding: "14px",
                     boxShadow: "0 16px 50px rgba(0,0,0,0.28)",
                   }}
                 >
                   <p
                     style={{
-                      margin: "0 0 14px 0",
+                      margin: "0 0 12px 0",
                       fontSize: "12px",
                       color: "#8fa7cc",
                       letterSpacing: "0.12em",
@@ -532,11 +555,11 @@ export default function TalkPage() {
 
                   <section
                     style={{
-                      marginBottom: message.japanese ? "14px" : "0",
-                      padding: "18px",
+                      marginBottom: message.japanese ? "12px" : "0",
+                      padding: "14px",
                       background: "#0c1320",
                       border: "1px solid #1f2a40",
-                      borderRadius: "18px",
+                      borderRadius: "16px",
                     }}
                   >
                     <div
@@ -544,7 +567,7 @@ export default function TalkPage() {
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
-                        gap: "12px",
+                        gap: "10px",
                         marginBottom: "10px",
                         flexWrap: "wrap",
                       }}
@@ -587,12 +610,13 @@ export default function TalkPage() {
                     <p
                       style={{
                         margin: 0,
-                        lineHeight: 1.85,
-                        fontSize: "24px",
+                        lineHeight: 1.7,
+                        fontSize: "clamp(20px, 6.2vw, 24px)",
                         fontWeight: 800,
                         color: "#ffffff",
                         letterSpacing: "0.01em",
                         whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
                       }}
                     >
                       {formatTalkText(message.english)}
@@ -602,10 +626,10 @@ export default function TalkPage() {
                   {message.japanese && (
                     <section
                       style={{
-                        padding: "14px 16px",
+                        padding: "12px 14px",
                         background: "#0b111d",
                         border: "1px solid #1b273c",
-                        borderRadius: "16px",
+                        borderRadius: "14px",
                       }}
                     >
                       <h2
@@ -624,6 +648,7 @@ export default function TalkPage() {
                           fontSize: "14px",
                           color: "#dbe4f3",
                           whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
                         }}
                       >
                         {formatTalkText(message.japanese)}
@@ -641,8 +666,9 @@ export default function TalkPage() {
                   background: "#111827",
                   border: "1px solid #22304a",
                   borderRadius: "18px",
-                  padding: "16px 20px",
+                  padding: "14px 16px",
                   color: "#94a3b8",
+                  fontSize: "14px",
                 }}
               >
                 AIが返答を作成中...
@@ -656,15 +682,16 @@ export default function TalkPage() {
         <form
           onSubmit={handleSubmit}
           style={{
-            marginTop: "20px",
+            marginTop: "16px",
             background: "rgba(13,17,26,0.94)",
             border: "1px solid #1c2538",
-            borderRadius: "22px",
-            padding: "16px",
+            borderRadius: "18px",
+            padding: "14px",
             display: "flex",
-            gap: "12px",
-            alignItems: "flex-end",
+            gap: "10px",
+            alignItems: "stretch",
             boxShadow: "0 16px 40px rgba(0,0,0,0.25)",
+            flexWrap: "wrap",
           }}
         >
           <textarea
@@ -674,7 +701,7 @@ export default function TalkPage() {
             placeholder="英語でも日本語でも入力"
             rows={3}
             style={{
-              flex: 1,
+              flex: "1 1 100%",
               resize: "vertical",
               minHeight: "56px",
               background: "#070b14",
@@ -683,56 +710,62 @@ export default function TalkPage() {
               borderRadius: "14px",
               padding: "14px 16px",
               outline: "none",
-              fontSize: "15px",
+              fontSize: "16px",
               lineHeight: 1.7,
               fontFamily: "inherit",
             }}
           />
 
-          <button
-            type="button"
-            onClick={handleMicClick}
-            disabled={!speechSupported || loading}
+          <div
             style={{
-              background: isListening ? "#f59e0b" : "#1b2a41",
-              color: isListening ? "#07101d" : "#dbe4f3",
-              border: "1px solid #2d3d5c",
-              borderRadius: "14px",
-              padding: "14px 16px",
-              fontWeight: 800,
-              cursor: !speechSupported || loading ? "default" : "pointer",
-              whiteSpace: "nowrap",
-              opacity: !speechSupported || loading ? 0.5 : 1,
-              fontSize: "14px",
-              height: "fit-content",
+              display: "flex",
+              gap: "10px",
+              width: "100%",
             }}
           >
-            {!speechSupported
-              ? "マイク未対応"
-              : isListening
-                ? "停止"
-                : "🎤 マイク"}
-          </button>
+            <button
+              type="button"
+              onClick={handleMicClick}
+              disabled={!speechSupported || loading}
+              style={{
+                flex: 1,
+                background: isListening ? "#f59e0b" : "#1b2a41",
+                color: isListening ? "#07101d" : "#dbe4f3",
+                border: "1px solid #2d3d5c",
+                borderRadius: "14px",
+                padding: "14px 16px",
+                fontWeight: 800,
+                cursor: !speechSupported || loading ? "default" : "pointer",
+                opacity: !speechSupported || loading ? 0.5 : 1,
+                fontSize: "14px",
+              }}
+            >
+              {!speechSupported
+                ? "マイク未対応"
+                : isListening
+                  ? "停止"
+                  : "🎤 マイク"}
+            </button>
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              background: "#7db3ff",
-              color: "#07101d",
-              border: "none",
-              borderRadius: "14px",
-              padding: "14px 18px",
-              fontWeight: 800,
-              cursor: loading ? "default" : "pointer",
-              whiteSpace: "nowrap",
-              opacity: loading ? 0.7 : 1,
-              fontSize: "14px",
-              height: "fit-content",
-            }}
-          >
-            {loading ? "送信中..." : "送信"}
-          </button>
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                flex: 1,
+                background: "#7db3ff",
+                color: "#07101d",
+                border: "none",
+                borderRadius: "14px",
+                padding: "14px 18px",
+                fontWeight: 800,
+                cursor: loading ? "default" : "pointer",
+                opacity: loading ? 0.7 : 1,
+                fontSize: "14px",
+              }}
+            >
+              {loading ? "送信中..." : "送信"}
+            </button>
+          </div>
         </form>
       </div>
     </main>
