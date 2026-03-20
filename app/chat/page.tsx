@@ -632,7 +632,7 @@ export default function ChatPage() {
                         margin: 0,
                         lineHeight: 1.8,
                         fontSize: "28px",
-                        fontWeight: 800,
+                        fontWeight: 700,
                         color: "#ffffff",
                         letterSpacing: "0.01em",
                         whiteSpace: "pre-wrap",
