@@ -4,8 +4,8 @@ import Link from "next/link";
 import {
   FormEvent,
   KeyboardEvent,
-  TouchEvent,
   MouseEvent,
+  TouchEvent,
   useEffect,
   useRef,
   useState,
@@ -73,11 +73,14 @@ export default function TalkPage() {
   const [loading, setLoading] = useState(false);
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const [isPressingMic, setIsPressingMic] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [micPermission, setMicPermission] = useState<
+    "idle" | "requesting" | "granted" | "denied" | "unsupported"
+  >("idle");
   const [openJapaneseMap, setOpenJapaneseMap] = useState<
     Record<number, boolean>
   >({});
-  const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [messages, setMessages] = useState<TalkMessage[]>([
     {
       role: "assistant",
@@ -91,16 +94,48 @@ export default function TalkPage() {
   const endRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const speechCacheRef = useRef<Map<string, string>>(new Map());
   const micTranscriptRef = useRef("");
   const isPressingMicRef = useRef(false);
   const ignoreMouseRef = useRef(false);
+  const submitAfterRecognitionRef = useRef(false);
+  const recognitionStartTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "end",
     });
-  }, [messages, loading]);
+  }, [messages, loading, micPermission]);
+
+  async function requestMicrophonePermission() {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
+    ) {
+      setMicPermission("unsupported");
+      return false;
+    }
+
+    try {
+      setMicPermission("requesting");
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      stream.getTracks().forEach((track) => track.stop());
+      setMicPermission("granted");
+      return true;
+    } catch (error) {
+      console.error(error);
+      setMicPermission("denied");
+      return false;
+    }
+  }
+
+  useEffect(() => {
+    void requestMicrophonePermission();
+  }, []);
 
   useEffect(() => {
     const SpeechRecognitionApi =
@@ -120,7 +155,11 @@ export default function TalkPage() {
 
     recognition.onstart = () => {
       setIsListening(true);
-      micTranscriptRef.current = "";
+
+      if (recognitionStartTimerRef.current) {
+        window.clearTimeout(recognitionStartTimerRef.current);
+        recognitionStartTimerRef.current = null;
+      }
     };
 
     recognition.onresult = (event) => {
@@ -144,24 +183,46 @@ export default function TalkPage() {
       setInput(nextText);
     };
 
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
+      console.error(event);
       setIsListening(false);
+      setIsPressingMic(false);
+      isPressingMicRef.current = false;
+      submitAfterRecognitionRef.current = false;
+
+      if (recognitionStartTimerRef.current) {
+        window.clearTimeout(recognitionStartTimerRef.current);
+        recognitionStartTimerRef.current = null;
+      }
     };
 
     recognition.onend = () => {
       setIsListening(false);
 
-      if (!isPressingMicRef.current) {
-        const spoken = micTranscriptRef.current.trim();
-        if (spoken && !loading) {
-          void submitMessage(spoken);
-        }
+      if (recognitionStartTimerRef.current) {
+        window.clearTimeout(recognitionStartTimerRef.current);
+        recognitionStartTimerRef.current = null;
+      }
+
+      const spoken = micTranscriptRef.current.trim();
+      const shouldSubmit = submitAfterRecognitionRef.current;
+
+      submitAfterRecognitionRef.current = false;
+      setIsPressingMic(false);
+      isPressingMicRef.current = false;
+
+      if (shouldSubmit && spoken && !loading) {
+        void submitMessage(spoken);
       }
     };
 
     recognitionRef.current = recognition;
 
     return () => {
+      if (recognitionStartTimerRef.current) {
+        window.clearTimeout(recognitionStartTimerRef.current);
+        recognitionStartTimerRef.current = null;
+      }
       recognition.stop();
       recognitionRef.current = null;
     };
@@ -173,6 +234,11 @@ export default function TalkPage() {
         audioRef.current.pause();
         audioRef.current = null;
       }
+
+      for (const url of speechCacheRef.current.values()) {
+        URL.revokeObjectURL(url);
+      }
+      speechCacheRef.current.clear();
     };
   }, []);
 
@@ -181,9 +247,12 @@ export default function TalkPage() {
     index: number,
     options?: { silent?: boolean }
   ) {
-    if (!text.trim()) return;
+    const normalizedText = text.trim();
+    if (!normalizedText) return;
 
     const silent = options?.silent === true;
+    const style = "natural";
+    const cacheKey = `${style}::${normalizedText}`;
 
     try {
       setSpeakingIndex(index);
@@ -193,31 +262,36 @@ export default function TalkPage() {
         audioRef.current = null;
       }
 
-      const res = await fetch("/api/speech", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text,
-          style: "natural",
-        }),
-      });
+      let url = speechCacheRef.current.get(cacheKey);
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(errorText || "speech request failed");
+      if (!url) {
+        const res = await fetch("/api/speech", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: normalizedText,
+            style,
+          }),
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(errorText || "speech request failed");
+        }
+
+        const blob = await res.blob();
+        url = URL.createObjectURL(blob);
+        speechCacheRef.current.set(cacheKey, url);
       }
 
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.preload = "auto";
 
       audioRef.current = audio;
 
       audio.onended = () => {
-        URL.revokeObjectURL(url);
         if (audioRef.current === audio) {
           audioRef.current = null;
         }
@@ -225,7 +299,6 @@ export default function TalkPage() {
       };
 
       audio.onerror = () => {
-        URL.revokeObjectURL(url);
         if (audioRef.current === audio) {
           audioRef.current = null;
         }
@@ -249,7 +322,6 @@ export default function TalkPage() {
   }
 
   async function handleSpeak(text: string, index: number) {
-    setHasUserInteracted(true);
     await playSpeech(text, index, { silent: false });
   }
 
@@ -260,20 +332,40 @@ export default function TalkPage() {
     }));
   }
 
-  function startMicPress() {
-    setHasUserInteracted(true);
-
+  async function startMicPress() {
     if (!speechSupported || !recognitionRef.current || loading) return;
-    if (isListening) return;
+    if (isListening || isPressingMicRef.current) return;
+
+    if (micPermission !== "granted") {
+      const ok = await requestMicrophonePermission();
+      if (!ok) return;
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setSpeakingIndex(null);
+    }
 
     isPressingMicRef.current = true;
+    setIsPressingMic(true);
+    submitAfterRecognitionRef.current = false;
     micTranscriptRef.current = "";
     setInput("");
 
     try {
       recognitionRef.current.start();
+
+      recognitionStartTimerRef.current = window.setTimeout(() => {
+        if (!isListening) {
+          setIsPressingMic(false);
+          isPressingMicRef.current = false;
+        }
+      }, 1500);
     } catch (error) {
       console.error(error);
+      setIsPressingMic(false);
+      isPressingMicRef.current = false;
     }
   }
 
@@ -281,6 +373,8 @@ export default function TalkPage() {
     if (!speechSupported || !recognitionRef.current) return;
 
     isPressingMicRef.current = false;
+    setIsPressingMic(false);
+    submitAfterRecognitionRef.current = true;
 
     if (isListening) {
       try {
@@ -288,13 +382,21 @@ export default function TalkPage() {
       } catch (error) {
         console.error(error);
       }
+      return;
+    }
+
+    const spoken = micTranscriptRef.current.trim();
+    submitAfterRecognitionRef.current = false;
+
+    if (spoken && !loading) {
+      void submitMessage(spoken);
     }
   }
 
   function handleMicTouchStart(e: TouchEvent<HTMLButtonElement>) {
     e.preventDefault();
     ignoreMouseRef.current = true;
-    startMicPress();
+    void startMicPress();
   }
 
   function handleMicTouchEnd(e: TouchEvent<HTMLButtonElement>) {
@@ -309,7 +411,7 @@ export default function TalkPage() {
   function handleMicMouseDown(e: MouseEvent<HTMLButtonElement>) {
     if (ignoreMouseRef.current) return;
     e.preventDefault();
-    startMicPress();
+    void startMicPress();
   }
 
   function handleMicMouseUp(e: MouseEvent<HTMLButtonElement>) {
@@ -331,6 +433,9 @@ export default function TalkPage() {
     }
 
     micTranscriptRef.current = "";
+    submitAfterRecognitionRef.current = false;
+    isPressingMicRef.current = false;
+    setIsPressingMic(false);
 
     const userMessage: TalkMessage = {
       role: "user",
@@ -370,7 +475,7 @@ export default function TalkPage() {
 
       setMessages((prev) => [...prev, assistantMessage]);
 
-      if (assistantMessage.english.trim() && hasUserInteracted) {
+      if (assistantMessage.english.trim()) {
         setTimeout(() => {
           void playSpeech(assistantMessage.english, nextIndex, {
             silent: true,
@@ -396,25 +501,18 @@ export default function TalkPage() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setHasUserInteracted(true);
     await submitMessage();
   }
 
   async function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      setHasUserInteracted(true);
       await submitMessage();
     }
   }
 
   return (
     <main
-      onPointerDown={() => {
-        if (!hasUserInteracted) {
-          setHasUserInteracted(true);
-        }
-      }}
       style={{
         minHeight: "100vh",
         width: "100%",
@@ -551,6 +649,30 @@ export default function TalkPage() {
             {"\n"}
             英語でも日本語でも入力できます。
           </p>
+
+          {micPermission === "requesting" && (
+            <p
+              style={{
+                margin: "10px 0 0 0",
+                fontSize: "13px",
+                color: "#facc15",
+              }}
+            >
+              マイク許可を確認中...
+            </p>
+          )}
+
+          {micPermission === "denied" && (
+            <p
+              style={{
+                margin: "10px 0 0 0",
+                fontSize: "13px",
+                color: "#fca5a5",
+              }}
+            >
+              マイクが拒否されています。ブラウザ設定でマイクを許可してください。
+            </p>
+          )}
         </section>
 
         <div
@@ -813,10 +935,7 @@ export default function TalkPage() {
         >
           <textarea
             value={input}
-            onChange={(e) => {
-              setHasUserInteracted(true);
-              setInput(e.target.value);
-            }}
+            onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="英語でも日本語でも入力"
             rows={3}
@@ -858,8 +977,9 @@ export default function TalkPage() {
               disabled={!speechSupported || loading}
               style={{
                 flex: 1,
-                background: isListening ? "#f59e0b" : "#1b2a41",
-                color: isListening ? "#07101d" : "#dbe4f3",
+                background: isListening || isPressingMic ? "#f59e0b" : "#1b2a41",
+                color:
+                  isListening || isPressingMic ? "#07101d" : "#dbe4f3",
                 border: "1px solid #2d3d5c",
                 borderRadius: "14px",
                 padding: "14px 16px",
@@ -876,7 +996,7 @@ export default function TalkPage() {
             >
               {!speechSupported
                 ? "マイク未対応"
-                : isListening
+                : isListening || isPressingMic
                   ? "離すと送信"
                   : "押して話す"}
             </button>
