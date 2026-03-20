@@ -105,7 +105,7 @@ function getInitialMessages(language: TargetLanguage): Message[] {
       },
       {
         role: "assistant",
-        english: "请给我一杯冰拿铁。",
+        english: "我想要一杯冰拿铁。",
         japanese: "アイスラテを1杯ください。",
         careful: "请给我一杯冰拿铁。",
         natural: "我想要一杯冰拿铁。",
@@ -152,31 +152,34 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [speakingKey, setSpeakingKey] = useState<string | null>(null);
   const [language, setLanguage] = useState<TargetLanguage>("english");
-  const [messages, setMessages] = useState<Message[]>(() =>
-    getInitialMessages("english")
-  );
+  const [messagesByLanguage, setMessagesByLanguage] = useState<
+    Record<TargetLanguage, Message[]>
+  >({
+    english: getInitialMessages("english"),
+    korean: getInitialMessages("korean"),
+    chinese: getInitialMessages("chinese"),
+  });
 
   const endRef = useRef<HTMLDivElement | null>(null);
 
-useEffect(() => {
-  if (loading) {
-    endRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end",
-    });
-    return;
-  }
+  useEffect(() => {
+    if (loading) {
+      endRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+      return;
+    }
 
-  if (messages.length > 2) {
-    endRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end",
-    });
-  }
-}, [messages, loading]);
+    if (messagesByLanguage[language].length > 2) {
+      endRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+    }
+  }, [messagesByLanguage, loading, language]);
 
   useEffect(() => {
-    setMessages(getInitialMessages(language));
     setInput("");
     setSpeakingKey(null);
   }, [language]);
@@ -184,6 +187,8 @@ useEffect(() => {
   const currentLanguage = useMemo(() => {
     return LANGUAGES.find((item) => item.key === language) ?? LANGUAGES[0];
   }, [language]);
+
+  const messages = messagesByLanguage[language];
 
   async function submitMessage() {
     const value = input.trim();
@@ -194,7 +199,10 @@ useEffect(() => {
       text: value,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessagesByLanguage((prev) => ({
+      ...prev,
+      [language]: [...prev[language], userMessage],
+    }));
     setInput("");
     setLoading(true);
 
@@ -217,9 +225,9 @@ useEffect(() => {
       }
 
       const mainText =
-  language === "english"
-    ? data.reply.english
-    : data.reply.natural || data.reply.careful || data.reply.english;
+        language === "english"
+          ? data.reply.english
+          : data.reply.natural || data.reply.careful || data.reply.english;
 
       const assistantMessage: AssistantMessage = {
         role: "assistant",
@@ -236,61 +244,67 @@ useEffect(() => {
           : [],
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessagesByLanguage((prev) => ({
+        ...prev,
+        [language]: [...prev[language], assistantMessage],
+      }));
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "unknown error";
 
-      setMessages((prev) => [
+      setMessagesByLanguage((prev) => ({
         ...prev,
-        {
-          role: "assistant",
-          english:
-            language === "korean"
-              ? "죄송합니다. 오류가 발생했습니다."
-              : language === "chinese"
-              ? "抱歉，发生错误了。"
-              : "Sorry, something went wrong.",
-          japanese: "エラーが発生しました。",
-          careful:
-            language === "korean"
-              ? "죄송합니다. 오류가 발생했습니다."
-              : language === "chinese"
-              ? "抱歉，发生错误了。"
-              : "Sorry, something went wrong.",
-          natural:
-            language === "korean"
-              ? "죄송합니다. 오류가 발생했습니다."
-              : language === "chinese"
-              ? "抱歉，出问题了。"
-              : "Sorry, something went wrong.",
-          casual:
-            language === "korean"
-              ? "앗, 오류가 났어요."
-              : language === "chinese"
-              ? "啊，出问题了。"
-              : "Sorry, somethin' went wrong.",
-          carefulKana:
-            language === "korean"
-              ? "チェソンハムニダ オリュガ バレッスムニダ"
-              : language === "chinese"
-              ? "バオチェン ファーション ツオウラ"
-              : "ソーリー、サムシング ウェント ロング",
-          naturalKana:
-            language === "korean"
-              ? "チェソンハムニダ オリュガ バレッスムニダ"
-              : language === "chinese"
-              ? "バオチェン チュ ウェンティラ"
-              : "ソーリー、サムシング ウェント ロング",
-          casualKana:
-            language === "korean"
-              ? "アッ オリュガ ナッソヨ"
-              : language === "chinese"
-              ? "アー チュ ウェンティラ"
-              : "ソーリー、サムシン ウェント ロング",
-          explanation: [`error: ${message}`],
-        },
-      ]);
+        [language]: [
+          ...prev[language],
+          {
+            role: "assistant",
+            english:
+              language === "korean"
+                ? "죄송합니다. 오류가 발생했습니다."
+                : language === "chinese"
+                ? "抱歉，发生错误了。"
+                : "Sorry, something went wrong.",
+            japanese: "エラーが発生しました。",
+            careful:
+              language === "korean"
+                ? "죄송합니다. 오류가 발생했습니다."
+                : language === "chinese"
+                ? "抱歉，发生错误了。"
+                : "Sorry, something went wrong.",
+            natural:
+              language === "korean"
+                ? "죄송합니다. 오류가 발생했습니다."
+                : language === "chinese"
+                ? "抱歉，出问题了。"
+                : "Sorry, something went wrong.",
+            casual:
+              language === "korean"
+                ? "앗, 오류가 났어요."
+                : language === "chinese"
+                ? "啊，出问题了。"
+                : "Sorry, somethin' went wrong.",
+            carefulKana:
+              language === "korean"
+                ? "チェソンハムニダ オリュガ バレッスムニダ"
+                : language === "chinese"
+                ? "バオチェン ファーション ツオウラ"
+                : "ソーリー、サムシング ウェント ロング",
+            naturalKana:
+              language === "korean"
+                ? "チェソンハムニダ オリュガ バレッスムニダ"
+                : language === "chinese"
+                ? "バオチェン チュ ウェンティラ"
+                : "ソーリー、サムシング ウェント ロング",
+            casualKana:
+              language === "korean"
+                ? "アッ オリュガ ナッソヨ"
+                : language === "chinese"
+                ? "アー チュ ウェンティラ"
+                : "ソーリー、サムシン ウェント ロング",
+            explanation: [`error: ${message}`],
+          },
+        ],
+      }));
     } finally {
       setLoading(false);
     }
