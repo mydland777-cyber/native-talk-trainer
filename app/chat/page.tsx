@@ -216,9 +216,14 @@ useEffect(() => {
         throw new Error(data?.error || "request failed");
       }
 
+      const mainText =
+  language === "english"
+    ? data.reply.english
+    : data.reply.natural || data.reply.careful || data.reply.english;
+
       const assistantMessage: AssistantMessage = {
         role: "assistant",
-        english: data.reply.english,
+        english: mainText,
         japanese: data.reply.japanese,
         careful: data.reply.careful,
         natural: data.reply.natural,
