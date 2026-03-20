@@ -118,6 +118,9 @@ Field rules:
 - "carefulKana", "naturalKana", and "casualKana" must be katakana guides based on how the Korean may sound to a Japanese learner.
 - Do not output romanization.
 - Make the Korean practical and actually speakable.
+- For Korean, the casual version must sound clearly more conversational than the natural version when possible.
+- In Korean casual, prefer real everyday spoken wording, lighter endings, contractions, and friendlier rhythm when appropriate.
+- Avoid making Korean casual too stiff, too textbook-like, or too close to the careful version.
       `.trim();
 
     case "chinese":
@@ -135,6 +138,9 @@ Field rules:
 - "carefulKana", "naturalKana", and "casualKana" must be katakana guides based on how the Mandarin may sound to a Japanese learner.
 - Do not output pinyin.
 - Make the Chinese practical and actually speakable.
+- For Chinese, the casual version must sound clearly more conversational than the natural version when possible.
+- In Chinese casual, prefer real everyday spoken wording, sentence-final particles, shorter spoken patterns, and more talk-like rhythm when appropriate.
+- Avoid making Chinese casual too formal, too written, or too close to the careful version.
       `.trim();
 
     default:
@@ -223,6 +229,11 @@ Behavior:
 - For Korean, output Hangul only in the target-language fields.
 - For Chinese, output Simplified Chinese only in the target-language fields.
 - Do not output romanization or pinyin.
+- The casual version must not be just a tiny variation of the natural version when a more talk-like everyday version is possible.
+- Make Korean and Chinese casual versions feel more like real spoken conversation.
+- For Korean casual, prefer more conversational everyday endings and phrasing when appropriate.
+- For Chinese casual, prefer more conversational everyday particles and spoken rhythm when appropriate.
+- Still keep all outputs widely usable and not slang-heavy unless the user's input clearly asks for that.
 
 Examples for English mode:
 
