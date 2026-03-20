@@ -59,15 +59,15 @@ export default function HomePage() {
             maxWidth: "760px",
           }}
         >
-          英語を「読む」だけではなく、実際の会話でどう聞こえるか、
-          どう崩れるか、そしてAIと実際にやり取りしながら話せるようになるための個人用Webアプリです。
+          英語・韓国語・中国語を、実際の会話でどう聞こえるか、
+          どう崩れるか、どんな場面で自然に使えるかまでまとめて学べる個人用Webアプリです。
         </p>
 
         <div
           style={{
             marginTop: "30px",
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gridTemplateColumns: "1fr",
             gap: "16px",
           }}
         >
@@ -109,8 +109,9 @@ export default function HomePage() {
                 color: "#dbe4f3",
               }}
             >
-              言いたい内容を自然な英語に直し、発音の崩れ方やカタカナ目安、
-              careful / natural / casual の違いまで見ながら確認できます。
+              言いたい内容を自然な英語・韓国語・中国語に直し、
+              careful / natural / casual の違いや、
+              発音の崩れ方、カタカナ目安、音声までまとめて確認できます。
             </p>
 
             <ul
@@ -122,9 +123,10 @@ export default function HomePage() {
                 fontSize: "14px",
               }}
             >
+              <li>英語・韓国語・中国語に対応</li>
               <li>自然な言い換え</li>
               <li>日本語補助</li>
-              <li>発音の崩れ表示</li>
+              <li>careful / natural / casual 比較</li>
               <li>カタカナ目安</li>
               <li>音声再生</li>
             </ul>
@@ -145,81 +147,6 @@ export default function HomePage() {
               学習チャットを開く
             </Link>
           </section>
-
-          <section
-            style={{
-              background: "#0b111d",
-              border: "1px solid #22304a",
-              borderRadius: "20px",
-              padding: "22px",
-            }}
-          >
-            <p
-              style={{
-                margin: "0 0 10px 0",
-                fontSize: "12px",
-                color: "#8eb8ff",
-                letterSpacing: "0.12em",
-                fontWeight: 700,
-              }}
-            >
-              FREE TALK
-            </p>
-
-            <h2
-              style={{
-                margin: "0 0 12px 0",
-                fontSize: "24px",
-                color: "#ffffff",
-              }}
-            >
-              フリートーク
-            </h2>
-
-            <p
-              style={{
-                margin: "0 0 18px 0",
-                fontSize: "15px",
-                lineHeight: 1.8,
-                color: "#dbe4f3",
-              }}
-            >
-              AIと普通に会話を続けるためのモードです。調べるより、
-              実際に英語を使って会話する練習に向いています。
-            </p>
-
-            <ul
-              style={{
-                margin: "0 0 20px 0",
-                paddingLeft: "20px",
-                color: "#cfd9ea",
-                lineHeight: 1.9,
-                fontSize: "14px",
-              }}
-            >
-              <li>AIと自然に英会話</li>
-              <li>会話を続ける練習</li>
-              <li>英語メインの返答</li>
-              <li>短い日本語補助</li>
-              <li>実践寄りの練習</li>
-            </ul>
-
-            <Link
-              href="/talk"
-              style={{
-                display: "inline-block",
-                background: "#7db3ff",
-                color: "#07101d",
-                textDecoration: "none",
-                fontWeight: 800,
-                padding: "14px 20px",
-                borderRadius: "14px",
-                fontSize: "14px",
-              }}
-            >
-              フリートークを開く
-            </Link>
-          </section>
         </div>
 
         <div style={{ marginTop: "34px" }}>
@@ -230,7 +157,7 @@ export default function HomePage() {
               color: "#f5f7ff",
             }}
           >
-            このアプリの使い分け
+            このアプリでできること
           </h2>
 
           <div
@@ -250,10 +177,10 @@ export default function HomePage() {
               }}
             >
               <strong style={{ color: "#ffffff" }}>学習チャット</strong>
-              は、
+              では、
               「これって自然にどう言うの？」
               「この場面なら何て言うの？」
-              を調べるモードです。
+              を調べながら、そのまま声に出して練習できます。
             </p>
 
             <p
@@ -264,8 +191,7 @@ export default function HomePage() {
                 lineHeight: 1.8,
               }}
             >
-              <strong style={{ color: "#ffffff" }}>フリートーク</strong>
-              は、AI相手に実際に会話を続けるモードです。
+              場面ごとに実用的な表現へ直しつつ、発音の崩れ方や聞こえ方まで一緒に確認できます。
             </p>
           </div>
         </div>
@@ -323,7 +249,7 @@ export default function HomePage() {
                     fontWeight: 700,
                   }}
                 >
-                  学習チャットで調べる
+                  言語を選ぶ
                 </p>
                 <p
                   style={{
@@ -333,7 +259,7 @@ export default function HomePage() {
                     color: "#dbe4f3",
                   }}
                 >
-                  言いたい内容を自然な英語にして、発音の崩れ方や聞こえ方を確認します。
+                  英語・韓国語・中国語から学びたい言語を選びます。
                 </p>
               </div>
 
@@ -364,7 +290,7 @@ export default function HomePage() {
                     fontWeight: 700,
                   }}
                 >
-                  音で確認する
+                  場面に合わせて調べる
                 </p>
                 <p
                   style={{
@@ -374,7 +300,7 @@ export default function HomePage() {
                     color: "#dbe4f3",
                   }}
                 >
-                  careful / natural / casual の音声を聞いて、実際のスピード感に慣れます。
+                  カフェ・空港・ホテル・友達・仕事など、使いたい場面に合わせて表現を確認します。
                 </p>
               </div>
 
@@ -405,7 +331,7 @@ export default function HomePage() {
                     fontWeight: 700,
                   }}
                 >
-                  フリートークで使う
+                  音で確認して口に出す
                 </p>
                 <p
                   style={{
@@ -415,7 +341,7 @@ export default function HomePage() {
                     color: "#dbe4f3",
                   }}
                 >
-                  調べた表現をそのままAIとの会話で使って、実践的に定着させます。
+                  careful / natural / casual の違いを見ながら、音声を聞いてそのまま真似します。
                 </p>
               </div>
             </div>
@@ -428,7 +354,7 @@ export default function HomePage() {
                 color: "#cfd9ea",
               }}
             >
-              まず調べてから実際に使う流れにすると、覚えやすさと会話力の両方を伸ばしやすくなります。
+              まず意味をつかんで、そのあと音で確認しながら口に出す流れにすると、覚えやすさと実用性の両方を伸ばしやすくなります。
             </p>
           </div>
         </div>
