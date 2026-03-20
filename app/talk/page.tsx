@@ -408,11 +408,16 @@ export default function TalkPage() {
       style={{
         minHeight: "100vh",
         width: "100%",
+        maxWidth: "100vw",
         overflowX: "hidden",
+        overscrollBehaviorX: "none",
+        touchAction: "pan-y",
+        WebkitOverflowScrolling: "touch",
         background:
           "radial-gradient(circle at top, rgba(33,62,110,0.22), transparent 28%), #05070d",
         color: "#f5f7ff",
         padding: "16px 12px 28px",
+        boxSizing: "border-box",
       }}
     >
       <div
@@ -421,6 +426,8 @@ export default function TalkPage() {
           maxWidth: "920px",
           margin: "0 auto",
           minWidth: 0,
+          overflowX: "hidden",
+          boxSizing: "border-box",
         }}
       >
         <div
