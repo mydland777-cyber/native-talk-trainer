@@ -4,6 +4,8 @@ import Link from "next/link";
 import {
   FormEvent,
   KeyboardEvent,
+  TouchEvent,
+  MouseEvent,
   useEffect,
   useRef,
   useState,
@@ -76,8 +78,6 @@ export default function TalkPage() {
     Record<number, boolean>
   >({});
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
-  const [hasPlayedInitialGreeting, setHasPlayedInitialGreeting] =
-    useState(false);
   const [messages, setMessages] = useState<TalkMessage[]>([
     {
       role: "assistant",
@@ -93,11 +93,7 @@ export default function TalkPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const micTranscriptRef = useRef("");
   const isPressingMicRef = useRef(false);
-  const latestInputRef = useRef("");
-
-  useEffect(() => {
-    latestInputRef.current = input;
-  }, [input]);
+  const ignoreMouseRef = useRef(false);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({
@@ -179,19 +175,6 @@ export default function TalkPage() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (!hasUserInteracted || hasPlayedInitialGreeting) return;
-
-    const firstAssistant = messages[0];
-    if (!firstAssistant || firstAssistant.role !== "assistant") return;
-
-    setHasPlayedInitialGreeting(true);
-
-    setTimeout(() => {
-      void playSpeech(firstAssistant.english, 0, { silent: true });
-    }, 120);
-  }, [hasUserInteracted, hasPlayedInitialGreeting, messages]);
 
   async function playSpeech(
     text: string,
@@ -308,6 +291,33 @@ export default function TalkPage() {
     }
   }
 
+  function handleMicTouchStart(e: TouchEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    ignoreMouseRef.current = true;
+    startMicPress();
+  }
+
+  function handleMicTouchEnd(e: TouchEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    endMicPress();
+
+    window.setTimeout(() => {
+      ignoreMouseRef.current = false;
+    }, 500);
+  }
+
+  function handleMicMouseDown(e: MouseEvent<HTMLButtonElement>) {
+    if (ignoreMouseRef.current) return;
+    e.preventDefault();
+    startMicPress();
+  }
+
+  function handleMicMouseUp(e: MouseEvent<HTMLButtonElement>) {
+    if (ignoreMouseRef.current) return;
+    e.preventDefault();
+    endMicPress();
+  }
+
   async function submitMessage(forcedValue?: string) {
     const value = String(forcedValue ?? input).trim();
     if (!value || loading) return;
@@ -360,7 +370,7 @@ export default function TalkPage() {
 
       setMessages((prev) => [...prev, assistantMessage]);
 
-      if (assistantMessage.english.trim()) {
+      if (assistantMessage.english.trim() && hasUserInteracted) {
         setTimeout(() => {
           void playSpeech(assistantMessage.english, nextIndex, {
             silent: true,
@@ -838,22 +848,12 @@ export default function TalkPage() {
           >
             <button
               type="button"
-              onPointerDown={(e) => {
-                e.preventDefault();
-                startMicPress();
-              }}
-              onPointerUp={(e) => {
-                e.preventDefault();
-                endMicPress();
-              }}
-              onPointerLeave={(e) => {
-                e.preventDefault();
-                endMicPress();
-              }}
-              onPointerCancel={(e) => {
-                e.preventDefault();
-                endMicPress();
-              }}
+              onTouchStart={handleMicTouchStart}
+              onTouchEnd={handleMicTouchEnd}
+              onTouchCancel={handleMicTouchEnd}
+              onMouseDown={handleMicMouseDown}
+              onMouseUp={handleMicMouseUp}
+              onMouseLeave={handleMicMouseUp}
               onContextMenu={(e) => e.preventDefault()}
               disabled={!speechSupported || loading}
               style={{
@@ -867,7 +867,7 @@ export default function TalkPage() {
                 cursor: !speechSupported || loading ? "default" : "pointer",
                 opacity: !speechSupported || loading ? 0.5 : 1,
                 fontSize: "14px",
-                touchAction: "none",
+                touchAction: "manipulation",
                 userSelect: "none",
                 WebkitUserSelect: "none",
                 WebkitTouchCallout: "none",
