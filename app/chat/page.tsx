@@ -158,12 +158,22 @@ export default function ChatPage() {
 
   const endRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
+useEffect(() => {
+  if (loading) {
     endRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "end",
     });
-  }, [messages, loading]);
+    return;
+  }
+
+  if (messages.length > 2) {
+    endRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  }
+}, [messages, loading]);
 
   useEffect(() => {
     setMessages(getInitialMessages(language));
