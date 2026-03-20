@@ -838,10 +838,23 @@ export default function TalkPage() {
           >
             <button
               type="button"
-              onPointerDown={startMicPress}
-              onPointerUp={endMicPress}
-              onPointerLeave={endMicPress}
-              onPointerCancel={endMicPress}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                startMicPress();
+              }}
+              onPointerUp={(e) => {
+                e.preventDefault();
+                endMicPress();
+              }}
+              onPointerLeave={(e) => {
+                e.preventDefault();
+                endMicPress();
+              }}
+              onPointerCancel={(e) => {
+                e.preventDefault();
+                endMicPress();
+              }}
+              onContextMenu={(e) => e.preventDefault()}
               disabled={!speechSupported || loading}
               style={{
                 flex: 1,
@@ -856,6 +869,9 @@ export default function TalkPage() {
                 fontSize: "14px",
                 touchAction: "none",
                 userSelect: "none",
+                WebkitUserSelect: "none",
+                WebkitTouchCallout: "none",
+                WebkitTapHighlightColor: "transparent",
               }}
             >
               {!speechSupported
