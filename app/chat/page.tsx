@@ -84,9 +84,9 @@ function getInitialMessages(language: TargetLanguage): Message[] {
         careful: "아이스 라떼 하나 주세요.",
         natural: "아이스 라떼 하나 주세요.",
         casual: "아이스 라떼 한 잔만 주세요.",
-        carefulKana: "アイス ラテ ハナ ジュセヨ",
-        naturalKana: "アイス ラテ ハナ ジュセヨ",
-        casualKana: "アイス ラテ ハンジャンマン ジュセヨ",
+        carefulKana: "アイス ラテ ハナ チュセヨ",
+        naturalKana: "アイス ラテ ハナ チュセヨ",
+        casualKana: "アイス ラテ ハンジャンマン チュセヨ",
         explanation: [
           "注文では 주세요 を使うと自然で使いやすい",
           "하나 は 1つ、한 잔 は 1杯という感じで、会話ではどちらもよく使う",
