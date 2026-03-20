@@ -72,6 +72,9 @@ export default function TalkPage() {
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [openJapaneseMap, setOpenJapaneseMap] = useState<
+    Record<number, boolean>
+  >({});
   const [messages, setMessages] = useState<TalkMessage[]>([
     {
       role: "assistant",
@@ -85,6 +88,9 @@ export default function TalkPage() {
   const endRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const autoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const micTranscriptRef = useRef("");
+  const isMicInputRef = useRef(false);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({
@@ -107,10 +113,11 @@ export default function TalkPage() {
     const recognition = new SpeechRecognitionApi();
     recognition.lang = "en-US";
     recognition.interimResults = true;
-    recognition.continuous = false;
+    recognition.continuous = true;
 
     recognition.onstart = () => {
       setIsListening(true);
+      isMicInputRef.current = true;
     };
 
     recognition.onresult = (event) => {
@@ -130,7 +137,19 @@ export default function TalkPage() {
       const nextText = (finalTranscript || interimTranscript).trim();
       if (!nextText) return;
 
+      micTranscriptRef.current = nextText;
       setInput(nextText);
+
+      if (autoSubmitTimerRef.current) {
+        clearTimeout(autoSubmitTimerRef.current);
+      }
+
+      autoSubmitTimerRef.current = setTimeout(() => {
+        if (!loading && micTranscriptRef.current.trim()) {
+          recognition.stop();
+          void submitMessage(micTranscriptRef.current.trim());
+        }
+      }, 2500);
     };
 
     recognition.onerror = () => {
@@ -144,10 +163,13 @@ export default function TalkPage() {
     recognitionRef.current = recognition;
 
     return () => {
+      if (autoSubmitTimerRef.current) {
+        clearTimeout(autoSubmitTimerRef.current);
+      }
       recognition.stop();
       recognitionRef.current = null;
     };
-  }, []);
+  }, [loading]);
 
   useEffect(() => {
     return () => {
@@ -194,6 +216,8 @@ export default function TalkPage() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
+      audio.preload = "auto";
+      audio.playsInline = true;
 
       audioRef.current = audio;
 
@@ -233,12 +257,35 @@ export default function TalkPage() {
     await playSpeech(text, index, { silent: false });
   }
 
+  function toggleJapanese(index: number) {
+    setOpenJapaneseMap((prev) => ({
+      ...prev,
+      [index]: !prev[index],
+    }));
+  }
+
   function handleMicClick() {
     if (!speechSupported || !recognitionRef.current || loading) return;
 
     if (isListening) {
       recognitionRef.current.stop();
+
+      if (autoSubmitTimerRef.current) {
+        clearTimeout(autoSubmitTimerRef.current);
+      }
+
+      if (micTranscriptRef.current.trim()) {
+        void submitMessage(micTranscriptRef.current.trim());
+      }
+
       return;
+    }
+
+    micTranscriptRef.current = "";
+    isMicInputRef.current = true;
+
+    if (autoSubmitTimerRef.current) {
+      clearTimeout(autoSubmitTimerRef.current);
     }
 
     try {
@@ -248,13 +295,20 @@ export default function TalkPage() {
     }
   }
 
-  async function submitMessage() {
-    const value = input.trim();
+  async function submitMessage(forcedValue?: string) {
+    const value = String(forcedValue ?? input).trim();
     if (!value || loading) return;
 
     if (isListening && recognitionRef.current) {
       recognitionRef.current.stop();
     }
+
+    if (autoSubmitTimerRef.current) {
+      clearTimeout(autoSubmitTimerRef.current);
+    }
+
+    micTranscriptRef.current = "";
+    isMicInputRef.current = false;
 
     const userMessage: TalkMessage = {
       role: "user",
@@ -527,6 +581,8 @@ export default function TalkPage() {
                 );
               }
 
+              const isJapaneseOpen = !!openJapaneseMap[index];
+
               return (
                 <div
                   key={index}
@@ -555,7 +611,6 @@ export default function TalkPage() {
 
                   <section
                     style={{
-                      marginBottom: message.japanese ? "12px" : "0",
                       padding: "14px",
                       background: "#0c1320",
                       border: "1px solid #1f2a40",
@@ -626,33 +681,55 @@ export default function TalkPage() {
                   {message.japanese && (
                     <section
                       style={{
-                        padding: "12px 14px",
+                        marginTop: "12px",
                         background: "#0b111d",
                         border: "1px solid #1b273c",
                         borderRadius: "14px",
+                        overflow: "hidden",
                       }}
                     >
-                      <h2
+                      <button
+                        type="button"
+                        onClick={() => toggleJapanese(index)}
                         style={{
-                          fontSize: "13px",
-                          margin: "0 0 8px 0",
+                          width: "100%",
+                          background: "transparent",
+                          border: "none",
                           color: "#d7e6ff",
+                          padding: "12px 14px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          cursor: "pointer",
                         }}
                       >
-                        日本語補助
-                      </h2>
-                      <p
-                        style={{
-                          margin: 0,
-                          lineHeight: 1.8,
-                          fontSize: "14px",
-                          color: "#dbe4f3",
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
-                        }}
-                      >
-                        {formatTalkText(message.japanese)}
-                      </p>
+                        <span>日本語補助</span>
+                        <span>{isJapaneseOpen ? "▼" : "▶"}</span>
+                      </button>
+
+                      {isJapaneseOpen && (
+                        <div
+                          style={{
+                            padding: "0 14px 14px",
+                            borderTop: "1px solid #1b273c",
+                          }}
+                        >
+                          <p
+                            style={{
+                              margin: "12px 0 0 0",
+                              lineHeight: 1.8,
+                              fontSize: "14px",
+                              color: "#dbe4f3",
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {formatTalkText(message.japanese)}
+                          </p>
+                        </div>
+                      )}
                     </section>
                   )}
                 </div>
@@ -743,7 +820,7 @@ export default function TalkPage() {
               {!speechSupported
                 ? "マイク未対応"
                 : isListening
-                  ? "停止"
+                  ? "話し終わったら自動送信"
                   : "🎤 マイク"}
             </button>
 
