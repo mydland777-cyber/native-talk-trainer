@@ -5,21 +5,7 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-type ScenarioKey = "cafe" | "airport" | "hotel" | "friends" | "business";
 type TargetLanguage = "english" | "korean" | "chinese";
-
-function normalizeScenario(value: string): ScenarioKey {
-  switch (value) {
-    case "cafe":
-    case "airport":
-    case "hotel":
-    case "friends":
-    case "business":
-      return value;
-    default:
-      return "cafe";
-  }
-}
 
 function normalizeLanguage(value: string): TargetLanguage {
   switch (value) {
@@ -29,62 +15,6 @@ function normalizeLanguage(value: string): TargetLanguage {
       return value;
     default:
       return "english";
-  }
-}
-
-function getScenarioInstruction(scenario: ScenarioKey) {
-  switch (scenario) {
-    case "cafe":
-      return `
-Scenario: Cafe conversation.
-
-Assume the learner wants language they can use in a cafe with staff.
-Prefer short, natural phrases for ordering, asking follow-up questions, checking options, and responding casually but politely.
-When appropriate, make the recommended wording sound like something a customer would actually say to staff.
-      `.trim();
-
-    case "airport":
-      return `
-Scenario: Airport conversation.
-
-Assume the learner wants language they can use at an airport with staff.
-Prefer practical phrases for check-in, boarding gates, baggage, delays, immigration-related simple questions, and asking for help.
-When appropriate, make the recommended wording sound like something a traveler would naturally say to airport staff.
-      `.trim();
-
-    case "hotel":
-      return `
-Scenario: Hotel conversation.
-
-Assume the learner wants language they can use at a hotel with front desk staff.
-Prefer practical phrases for check-in, reservations, room issues, Wi-Fi, breakfast, requests, and polite questions.
-When appropriate, make the recommended wording sound like something a guest would naturally say at a hotel.
-      `.trim();
-
-    case "friends":
-      return `
-Scenario: Friends / casual talk.
-
-Assume the learner wants language they can use with friends in casual daily conversation.
-Prefer relaxed, natural, modern spoken language.
-It is okay for the casual version to sound more conversational and a little faster, but still keep it realistic and widely usable.
-      `.trim();
-
-    case "business":
-      return `
-Scenario: Business conversation.
-
-Assume the learner wants language they can use at work with coworkers, clients, or in meetings.
-Prefer natural business language that sounds polite and usable in real work situations.
-Avoid stiff textbook phrasing. Keep it practical, clear, and professional.
-      `.trim();
-
-    default:
-      return `
-Scenario: General spoken conversation.
-
-Prefer practical phrases the learner can actually say in real conversation.
-      `.trim();
   }
 }
 
@@ -154,7 +84,6 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const input = String(body?.message ?? "").trim();
-    const scenario = normalizeScenario(String(body?.scenario ?? "cafe").trim());
     const language = normalizeLanguage(
       String(body?.language ?? "english").trim()
     );
@@ -166,7 +95,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const scenarioInstruction = getScenarioInstruction(scenario);
     const languageInstruction = getLanguageInstruction(language);
 
     const response = await client.responses.create({
@@ -181,10 +109,6 @@ Your top priority is to rewrite the user's input into something they can actuall
 Do not act like a dictionary.
 Do not explain the original sentence word by word.
 Do not preserve the original wording unless it is already the best spoken version.
-
-You must also respect the current scenario and make the output fit that situation naturally.
-
-${scenarioInstruction}
 
 ${languageInstruction}
 
@@ -205,8 +129,8 @@ The JSON must be exactly:
 }
 
 Behavior:
-- If the input is Japanese, turn it into natural spoken language in the target language for the scenario.
-- If the input is already in the target language, rewrite it into more natural spoken language for the scenario.
+- If the input is Japanese, turn it into natural spoken language in the target language.
+- If the input is already in the target language, rewrite it into more natural spoken language.
 - "english" is the main recommended phrase field for the UI, even when the target language is Korean or Chinese.
 - "japanese" must be a short natural Japanese meaning/support line.
 - "careful" must be a clear careful version in the target language.
@@ -216,16 +140,13 @@ Behavior:
 - Katakana guides are only approximate listening aids, not exact pronunciation.
 - Avoid overly stiff katakana. Make it practical and easy to imagine.
 - "explanation" must be 2 to 4 short Japanese strings.
-- The explanation must focus on wording choice, scenario fit, and spoken connection/reduction.
+- The explanation must focus on wording choice and spoken connection/reduction.
 - Never use dictionary-style explanation.
 - Never explain each word separately.
 - At least one explanation line should mention that the katakana is only a rough guide when appropriate.
 - Keep it practical, short, and usable.
 - Prefer phrases a learner can immediately repeat out loud.
 - Avoid making the target-language text longer than necessary.
-- In "business", keep the recommendation polite and professional.
-- In "friends", allow more relaxed spoken language.
-- In service situations like "cafe", "airport", and "hotel", prefer wording that sounds natural toward staff.
 - For Korean, output Hangul only in the target-language fields.
 - For Chinese, output Simplified Chinese only in the target-language fields.
 - Do not output romanization or pinyin.
@@ -293,7 +214,6 @@ Return JSON only.
     return NextResponse.json({
       reply: parsed,
       language,
-      scenario,
     });
   } catch (error) {
     console.error(error);

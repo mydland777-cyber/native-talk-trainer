@@ -30,52 +30,7 @@ type AssistantMessage = {
 
 type Message = UserMessage | AssistantMessage;
 type SpeechStyle = "careful" | "natural" | "casual";
-type ScenarioKey = "cafe" | "airport" | "hotel" | "friends" | "business";
 type TargetLanguage = "english" | "korean" | "chinese";
-
-const SCENARIOS: {
-  key: ScenarioKey;
-  label: string;
-  title: string;
-  description: string;
-  placeholder: string;
-}[] = [
-  {
-    key: "cafe",
-    label: "カフェ",
-    title: "Cafe Conversation",
-    description: "注文・聞き返し・おすすめの確認などを練習",
-    placeholder: "例: アイスラテを注文したい、サイズを聞きたい",
-  },
-  {
-    key: "airport",
-    label: "空港",
-    title: "Airport Conversation",
-    description: "チェックイン・搭乗口・手荷物などを練習",
-    placeholder: "例: 搭乗口はどこですか？ 荷物を預けたい",
-  },
-  {
-    key: "hotel",
-    label: "ホテル",
-    title: "Hotel Conversation",
-    description: "チェックイン・設備確認・トラブル対応を練習",
-    placeholder: "例: 予約しています、Wi-Fiは使えますか？",
-  },
-  {
-    key: "friends",
-    label: "友達",
-    title: "Friends / Casual Talk",
-    description: "日常会話・誘い方・軽い雑談を練習",
-    placeholder: "例: 今夜ひま？ 一緒にご飯行かない？",
-  },
-  {
-    key: "business",
-    label: "仕事",
-    title: "Business Conversation",
-    description: "会議・依頼・確認・丁寧な言い回しを練習",
-    placeholder: "例: この件を確認してもらえますか？",
-  },
-];
 
 const LANGUAGES: {
   key: TargetLanguage;
@@ -84,7 +39,7 @@ const LANGUAGES: {
   pronunciationTitle: string;
   audioTitle: string;
   mainLabel: string;
-  placeholderHint: string;
+  placeholder: string;
 }[] = [
   {
     key: "english",
@@ -93,7 +48,7 @@ const LANGUAGES: {
     pronunciationTitle: "Pronunciation",
     audioTitle: "Audio",
     mainLabel: "English",
-    placeholderHint: "英語を練習",
+    placeholder: "例: アイスラテください / これ自然に言うと？",
   },
   {
     key: "korean",
@@ -102,7 +57,7 @@ const LANGUAGES: {
     pronunciationTitle: "韓国語フレーズ",
     audioTitle: "Audio",
     mainLabel: "Korean",
-    placeholderHint: "韓国語を練習",
+    placeholder: "例: アイスラテくださいを自然な韓国語で / これ韓国語だと？",
   },
   {
     key: "chinese",
@@ -111,7 +66,7 @@ const LANGUAGES: {
     pronunciationTitle: "中国語フレーズ",
     audioTitle: "Audio",
     mainLabel: "Chinese",
-    placeholderHint: "中国語を練習",
+    placeholder: "例: アイスラテくださいを自然な中国語で / これ中国語だと？",
   },
 ];
 
@@ -196,7 +151,6 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [speakingKey, setSpeakingKey] = useState<string | null>(null);
-  const [scenario, setScenario] = useState<ScenarioKey>("cafe");
   const [language, setLanguage] = useState<TargetLanguage>("english");
   const [messages, setMessages] = useState<Message[]>(() =>
     getInitialMessages("english")
@@ -217,17 +171,9 @@ export default function ChatPage() {
     setSpeakingKey(null);
   }, [language]);
 
-  const currentScenario = useMemo(() => {
-    return SCENARIOS.find((item) => item.key === scenario) ?? SCENARIOS[0];
-  }, [scenario]);
-
   const currentLanguage = useMemo(() => {
     return LANGUAGES.find((item) => item.key === language) ?? LANGUAGES[0];
   }, [language]);
-
-  const currentPlaceholder = useMemo(() => {
-    return `${currentScenario.placeholder} / ${currentLanguage.placeholderHint}`;
-  }, [currentScenario, currentLanguage]);
 
   async function submitMessage() {
     const value = input.trim();
@@ -250,7 +196,6 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           message: value,
-          scenario,
           language,
         }),
       });
@@ -453,7 +398,7 @@ export default function ChatPage() {
                 lineHeight: 1.7,
               }}
             >
-              場面ごとに、自然な言い換えと崩れた発音をまとめて練習できます。
+              言語を選んで、自然な言い換えと崩れた発音をまとめて練習できます。
             </p>
           </div>
 
@@ -497,7 +442,7 @@ export default function ChatPage() {
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
               gap: "10px",
-              marginBottom: "18px",
+              marginBottom: "14px",
             }}
           >
             {LANGUAGES.map((item) => {
@@ -508,51 +453,6 @@ export default function ChatPage() {
                   key={item.key}
                   type="button"
                   onClick={() => setLanguage(item.key)}
-                  style={{
-                    background: active ? "#7db3ff" : "#0b111d",
-                    color: active ? "#07101d" : "#dbe4f3",
-                    border: active ? "1px solid #7db3ff" : "1px solid #22304a",
-                    borderRadius: "14px",
-                    padding: "12px 14px",
-                    fontWeight: 800,
-                    fontSize: "14px",
-                    cursor: "pointer",
-                  }}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <p
-            style={{
-              margin: "0 0 12px 0",
-              fontSize: "12px",
-              color: "#8fa7cc",
-              letterSpacing: "0.12em",
-              fontWeight: 700,
-            }}
-          >
-            SCENARIO
-          </p>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-              gap: "10px",
-              marginBottom: "14px",
-            }}
-          >
-            {SCENARIOS.map((item) => {
-              const active = item.key === scenario;
-
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => setScenario(item.key)}
                   style={{
                     background: active ? "#7db3ff" : "#0b111d",
                     color: active ? "#07101d" : "#dbe4f3",
@@ -585,7 +485,7 @@ export default function ChatPage() {
                 color: "#ffffff",
               }}
             >
-              {currentScenario.title}
+              {currentLanguage.title}
             </h2>
             <p
               style={{
@@ -595,7 +495,7 @@ export default function ChatPage() {
                 color: "#dbe4f3",
               }}
             >
-              {currentScenario.description}
+              自然な言い換え、会話的な崩し、音のつながりを確認しながら練習できます。
             </p>
             <p
               style={{
@@ -605,7 +505,7 @@ export default function ChatPage() {
                 color: "#8fa7cc",
               }}
             >
-              入力例: {currentPlaceholder}
+              入力例: {currentLanguage.placeholder}
             </p>
           </div>
         </section>
@@ -1189,7 +1089,7 @@ export default function ChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={currentPlaceholder}
+            placeholder={currentLanguage.placeholder}
             rows={3}
             style={{
               flex: 1,
