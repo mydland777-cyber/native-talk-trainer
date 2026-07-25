@@ -6,7 +6,13 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-type TargetLanguage = "english" | "german" | "french" | "italian";
+type TargetLanguage =
+  | "english"
+  | "korean"
+  | "chinese"
+  | "german"
+  | "french"
+  | "italian";
 
 type TranslationDirection =
   | "japanese-to-foreign"
@@ -16,6 +22,8 @@ type TranslationTone = "standard" | "polite" | "friendly";
 
 const LANGUAGE_NAMES: Record<TargetLanguage, string> = {
   english: "English",
+  korean: "Korean",
+  chinese: "Mandarin Chinese",
   german: "German",
   french: "French",
   italian: "Italian",
@@ -24,10 +32,13 @@ const LANGUAGE_NAMES: Record<TargetLanguage, string> = {
 function normalizeLanguage(value: string): TargetLanguage {
   switch (value) {
     case "english":
+    case "korean":
+    case "chinese":
     case "german":
     case "french":
     case "italian":
       return value;
+
     default:
       return "english";
   }
@@ -42,25 +53,26 @@ function normalizeDirection(value: string): TranslationDirection {
 function normalizeTone(value: string): TranslationTone {
   if (value === "polite") return "polite";
   if (value === "friendly") return "friendly";
+
   return "standard";
 }
 
 function getToneInstruction(tone: TranslationTone) {
   if (tone === "polite") {
     return `
-Use polite and respectful spoken language.
+Use polite, respectful, and natural spoken language.
 
-This style should be suitable for:
+The wording should be suitable for:
 - hotels
 - restaurants
-- shops
 - airports
 - train stations
+- shops
 - taxis
 - public services
 - speaking with staff or strangers
 
-Do not make the sentence excessively formal or old-fashioned.
+Do not make it excessively formal, old-fashioned, stiff, or unnatural.
 Use wording that a modern native speaker would naturally use when being polite.
     `.trim();
   }
@@ -69,20 +81,20 @@ Use wording that a modern native speaker would naturally use when being polite.
     return `
 Use friendly, warm, and conversational spoken language.
 
-The sentence should feel:
+The wording should feel:
 - approachable
 - relaxed
 - kind
 - natural in everyday conversation
 
 Do not use rude expressions.
-Do not use heavy slang.
-Do not make the wording overly casual when speaking with a stranger.
+Do not use excessive slang.
+Keep it appropriate for speaking with someone the traveler has just met.
     `.trim();
   }
 
   return `
-Use standard, natural spoken language.
+Use standard and natural spoken language.
 
 The sentence should sound like something a native speaker would normally say in this situation.
 
@@ -92,7 +104,55 @@ It should be:
 - polite enough for ordinary travel situations
 - neither excessively formal nor overly casual
 
-This is the default style.
+This is the default speaking style.
+  `.trim();
+}
+
+function getLanguageSpecificInstruction(language: TargetLanguage) {
+  if (language === "korean") {
+    return `
+Use modern standard Korean that is natural in South Korea.
+For ordinary travel conversations, use natural polite speech ending mainly in 요.
+Avoid stiff textbook Korean unless the situation specifically requires formality.
+    `.trim();
+  }
+
+  if (language === "chinese") {
+    return `
+Use modern standard Mandarin Chinese.
+Return Simplified Chinese characters.
+Use natural spoken expressions commonly understood in mainland China.
+Avoid literary or overly formal written Chinese.
+    `.trim();
+  }
+
+  if (language === "german") {
+    return `
+Use modern standard German.
+Choose du or Sie appropriately from the selected tone and situation.
+For staff, strangers, hotels, restaurants, stations, and public services, prefer Sie unless the friendly tone clearly makes du appropriate.
+    `.trim();
+  }
+
+  if (language === "french") {
+    return `
+Use modern standard French.
+Choose tu or vous appropriately from the selected tone and situation.
+For staff, strangers, hotels, restaurants, stations, and public services, prefer vous unless the friendly tone clearly makes tu appropriate.
+    `.trim();
+  }
+
+  if (language === "italian") {
+    return `
+Use modern standard Italian.
+Choose informal or polite forms naturally for the situation.
+For staff, strangers, hotels, restaurants, stations, and public services, use respectful wording without sounding excessively formal.
+    `.trim();
+  }
+
+  return `
+Use modern, natural spoken English.
+Prefer wording that travelers can say easily and native speakers commonly use.
   `.trim();
 }
 
@@ -151,8 +211,10 @@ export async function POST(req: Request) {
 
     const foreignLanguage = LANGUAGE_NAMES[language];
     const toneInstruction = getToneInstruction(tone);
+    const languageInstruction =
+      getLanguageSpecificInstruction(language);
 
-    const instruction =
+    const instructions =
       direction === "japanese-to-foreign"
         ? `
 You are a professional travel conversation translator.
@@ -164,11 +226,14 @@ The translation will be used immediately during face-to-face travel conversation
 Speaking style:
 ${toneInstruction}
 
-Requirements:
+Language requirements:
+${languageInstruction}
+
+General requirements:
 - Preserve the intended meaning accurately.
 - Use practical wording that a traveler can actually say.
 - Prefer short, clear, natural sentences.
-- Consider the likely travel situation from the Japanese text.
+- Consider the likely travel situation from the Japanese source.
 - Use vocabulary commonly understood by native speakers.
 - Do not translate names, hotel names, station names, addresses, or product names unnecessarily.
 - Do not add information that is not present in the source.
@@ -188,8 +253,8 @@ The translation will be used immediately during face-to-face travel conversation
 
 Requirements:
 - Preserve the intended meaning accurately.
-- Use clear Japanese that a Japanese traveler can understand immediately.
-- Reflect whether the speaker sounds standard, polite, or friendly.
+- Use Japanese that a traveler can understand immediately.
+- Reflect the speaker's level of politeness and friendliness.
 - Do not make the Japanese unnecessarily formal.
 - Do not translate names, hotel names, station names, addresses, or product names unnecessarily.
 - Do not add information that is not present in the source.
@@ -204,7 +269,7 @@ Requirements:
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
       store: false,
-      instructions: instruction,
+      instructions,
       input: text,
     });
 
