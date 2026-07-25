@@ -108,6 +108,99 @@ function getFileExtension(mimeType: string) {
   return "webm";
 }
 
+function getLanguageColors(language: TargetLanguage) {
+  switch (language) {
+    case "english":
+      return {
+        background: "linear-gradient(180deg, #78b7ff, #4f8fe8)",
+        border: "#8fc4ff",
+        color: "#07111f",
+        shadow: "0 8px 20px rgba(79,143,232,0.24)",
+      };
+
+    case "korean":
+      return {
+        background: "linear-gradient(180deg, #ff91bc, #e85d93)",
+        border: "#ffafd0",
+        color: "#260713",
+        shadow: "0 8px 20px rgba(232,93,147,0.24)",
+      };
+
+    case "chinese":
+      return {
+        background: "linear-gradient(180deg, #ff9b73, #e76545)",
+        border: "#ffb092",
+        color: "#270a04",
+        shadow: "0 8px 20px rgba(231,101,69,0.24)",
+      };
+
+    case "german":
+      return {
+        background: "linear-gradient(180deg, #ffd66f, #e7aa35)",
+        border: "#ffe39a",
+        color: "#241600",
+        shadow: "0 8px 20px rgba(231,170,53,0.24)",
+      };
+
+    case "french":
+      return {
+        background: "linear-gradient(180deg, #9d8dff, #6f62df)",
+        border: "#b9aeff",
+        color: "#100b2c",
+        shadow: "0 8px 20px rgba(111,98,223,0.24)",
+      };
+
+    case "italian":
+      return {
+        background: "linear-gradient(180deg, #8fe0b1, #58b77d)",
+        border: "#a8ebc4",
+        color: "#061b0e",
+        shadow: "0 8px 20px rgba(88,183,125,0.24)",
+      };
+  }
+}
+
+function getToneColors(tone: TranslationTone) {
+  switch (tone) {
+    case "standard":
+      return {
+        background: "linear-gradient(180deg, #7fb8ff, #5b91de)",
+        border: "#9ac8ff",
+        color: "#07111f",
+      };
+
+    case "polite":
+      return {
+        background: "linear-gradient(180deg, #b39bff, #806bdd)",
+        border: "#c9bbff",
+        color: "#130b2d",
+      };
+
+    case "friendly":
+      return {
+        background: "linear-gradient(180deg, #ffad7b, #e77b4c)",
+        border: "#ffc29d",
+        color: "#281006",
+      };
+  }
+}
+
+function getVoiceColors(voiceGender: VoiceGender) {
+  if (voiceGender === "female") {
+    return {
+      background: "linear-gradient(180deg, #ff9fc5, #df6598)",
+      border: "#ffb8d5",
+      color: "#270814",
+    };
+  }
+
+  return {
+    background: "linear-gradient(180deg, #79c7d8, #4297ad)",
+    border: "#9bdae6",
+    color: "#05191f",
+  };
+}
+
 export default function HomePage() {
   const [language, setLanguage] =
     useState<TargetLanguage>("english");
@@ -117,6 +210,8 @@ export default function HomePage() {
 
   const [voiceGender, setVoiceGender] =
     useState<VoiceGender>("female");
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [japaneseText, setJapaneseText] = useState("");
   const [translatedText, setTranslatedText] = useState("");
@@ -647,8 +742,30 @@ export default function HomePage() {
   }
 
   return (
-    <main
-      style={{
+    <>
+      <style jsx global>{`
+        button {
+          -webkit-tap-highlight-color: transparent;
+          transition:
+            transform 90ms ease,
+            filter 90ms ease,
+            box-shadow 140ms ease,
+            background 140ms ease,
+            border-color 140ms ease;
+        }
+
+        button:not(:disabled):active {
+          transform: translateY(2px) scale(0.97);
+          filter: brightness(0.88);
+        }
+
+        button:disabled {
+          cursor: default;
+        }
+      `}</style>
+
+      <main
+        style={{
         minHeight: "100vh",
         background:
           "radial-gradient(circle at top, rgba(33,62,110,0.24), transparent 28%), #05070d",
@@ -724,13 +841,13 @@ export default function HomePage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns:
-                "repeat(3, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
               gap: "8px",
             }}
           >
             {LANGUAGES.map((item) => {
               const active = item.key === language;
+              const activeColors = getLanguageColors(item.key);
 
               return (
                 <button
@@ -746,21 +863,24 @@ export default function HomePage() {
                     minHeight: "62px",
                     padding: "8px 4px",
                     background: active
-                      ? "#7db3ff"
+                      ? activeColors.background
                       : "#0b111d",
                     color: active
-                      ? "#07101d"
+                      ? activeColors.color
                       : "#e4ebf7",
                     border: active
-                      ? "1px solid #7db3ff"
+                      ? `1px solid ${activeColors.border}`
                       : "1px solid #22304a",
                     borderRadius: "13px",
+                    boxShadow: active
+                      ? activeColors.shadow
+                      : "none",
                     fontFamily: "inherit",
                     cursor:
                       recordingSide !== null
                         ? "default"
                         : "pointer",
-                    fontSize: "16px",
+                    fontSize: "17px",
                     fontWeight: 900,
                     opacity:
                       recordingSide !== null && !active
@@ -784,194 +904,219 @@ export default function HomePage() {
           >
             相手の言語を検知すると、自動で切り替わります。
           </p>
-        </section>
 
-        <section
-          style={{
-            background: "rgba(13,17,26,0.94)",
-            border: "1px solid #1c2538",
-            borderRadius: "20px",
-            padding: "14px",
-            marginBottom: "12px",
-          }}
-        >
-          <h2
+          <button
+            type="button"
+            aria-expanded={settingsOpen}
+            disabled={recordingSide !== null}
+            onClick={() => setSettingsOpen((current) => !current)}
             style={{
-              margin: "0 0 10px",
-              fontSize: "15px",
-              color: "#ffffff",
+              width: "100%",
+              minHeight: "54px",
+              marginTop: "12px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              padding: "10px 13px",
+              background: settingsOpen
+                ? "rgba(37,51,77,0.9)"
+                : "#0b111d",
+              color: "#f2f5fb",
+              border: settingsOpen
+                ? "1px solid #556b91"
+                : "1px solid #25334d",
+              borderRadius: "14px",
+              fontFamily: "inherit",
+              cursor:
+                recordingSide !== null
+                  ? "default"
+                  : "pointer",
+              textAlign: "left",
             }}
           >
-            話し方
-          </h2>
+            <span>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "11px",
+                  color: "#8fa7cc",
+                  fontWeight: 800,
+                }}
+              >
+                音声設定
+              </span>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(3, minmax(0, 1fr))",
-              gap: "8px",
-            }}
-          >
-            {TONES.map((item) => {
-              const active = item.key === tone;
+              <span
+                style={{
+                  display: "block",
+                  marginTop: "3px",
+                  fontSize: "14px",
+                  fontWeight: 900,
+                }}
+              >
+                {currentTone.label} ・{" "}
+                {voiceGender === "female" ? "女性" : "男性"}
+              </span>
+            </span>
 
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  disabled={recordingSide !== null}
-                  onClick={() => {
-                    stopAudio();
-                    setTone(item.key);
-                  }}
-                  style={{
-                    minHeight: "54px",
-                    padding: "8px 5px",
-                    background: active
-                      ? "#172b47"
-                      : "#0b111d",
-                    color: active
-                      ? "#a9d0ff"
-                      : "#e4ebf7",
-                    border: active
-                      ? "1px solid #7db3ff"
-                      : "1px solid #22304a",
-                    borderRadius: "12px",
-                    fontFamily: "inherit",
-                    fontSize: "13px",
-                    fontWeight: 900,
-                    cursor:
-                      recordingSide !== null
-                        ? "default"
-                        : "pointer",
-                  }}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <p
-            style={{
-              margin: "9px 0 0",
-              color: "#8fa7cc",
-              fontSize: "11px",
-              lineHeight: 1.5,
-            }}
-          >
-            {currentTone.description}
-          </p>
-        </section>
-
-        <section
-          style={{
-            background: "rgba(13,17,26,0.94)",
-            border: "1px solid #1c2538",
-            borderRadius: "20px",
-            padding: "14px",
-            marginBottom: "12px",
-          }}
-        >
-          <h2
-            style={{
-              margin: "0 0 10px",
-              fontSize: "15px",
-              color: "#ffffff",
-            }}
-          >
-            音声
-          </h2>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "8px",
-            }}
-          >
-            <button
-              type="button"
-              disabled={recordingSide !== null}
-              onClick={() => {
-                stopAudio();
-                setVoiceGender("female");
-              }}
+            <span
+              aria-hidden="true"
               style={{
-                minHeight: "56px",
-                padding: "10px",
-                background:
-                  voiceGender === "female"
-                    ? "#7db3ff"
-                    : "#0b111d",
-                color:
-                  voiceGender === "female"
-                    ? "#07101d"
-                    : "#e4ebf7",
-                border:
-                  voiceGender === "female"
-                    ? "1px solid #7db3ff"
-                    : "1px solid #22304a",
-                borderRadius: "13px",
-                fontFamily: "inherit",
-                fontSize: "16px",
-                fontWeight: 900,
-                cursor:
-                  recordingSide !== null
-                    ? "default"
-                    : "pointer",
+                fontSize: "18px",
+                color: "#a9bad4",
+                transform: settingsOpen
+                  ? "rotate(180deg)"
+                  : "rotate(0deg)",
+                transition: "transform 160ms ease",
               }}
             >
-              女性
-            </button>
+              ▼
+            </span>
+          </button>
 
-            <button
-              type="button"
-              disabled={recordingSide !== null}
-              onClick={() => {
-                stopAudio();
-                setVoiceGender("male");
-              }}
+          {settingsOpen && (
+            <div
               style={{
-                minHeight: "56px",
-                padding: "10px",
-                background:
-                  voiceGender === "male"
-                    ? "#7db3ff"
-                    : "#0b111d",
-                color:
-                  voiceGender === "male"
-                    ? "#07101d"
-                    : "#e4ebf7",
-                border:
-                  voiceGender === "male"
-                    ? "1px solid #7db3ff"
-                    : "1px solid #22304a",
-                borderRadius: "13px",
-                fontFamily: "inherit",
-                fontSize: "16px",
-                fontWeight: 900,
-                cursor:
-                  recordingSide !== null
-                    ? "default"
-                    : "pointer",
+                marginTop: "10px",
+                padding: "12px",
+                background: "#080d17",
+                border: "1px solid #202d44",
+                borderRadius: "15px",
               }}
             >
-              男性
-            </button>
-          </div>
+              <p
+                style={{
+                  margin: "0 0 8px",
+                  color: "#dbe5f4",
+                  fontSize: "13px",
+                  fontWeight: 900,
+                }}
+              >
+                話し方
+              </p>
 
-          <p
-            style={{
-              margin: "9px 0 0",
-              color: "#8fa7cc",
-              fontSize: "11px",
-              lineHeight: 1.5,
-            }}
-          >
-            相手へ聞かせる音声を選択します。初期設定は女性です。
-          </p>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: "8px",
+                }}
+              >
+                {TONES.map((item) => {
+                  const active = item.key === tone;
+                  const activeColors = getToneColors(item.key);
+
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      disabled={recordingSide !== null}
+                      onClick={() => {
+                        stopAudio();
+                        setTone(item.key);
+                      }}
+                      style={{
+                        minHeight: "52px",
+                        padding: "8px 5px",
+                        background: active
+                          ? activeColors.background
+                          : "#0d1421",
+                        color: active
+                          ? activeColors.color
+                          : "#e4ebf7",
+                        border: active
+                          ? `1px solid ${activeColors.border}`
+                          : "1px solid #263550",
+                        borderRadius: "12px",
+                        fontFamily: "inherit",
+                        fontSize: "13px",
+                        fontWeight: 900,
+                        cursor:
+                          recordingSide !== null
+                            ? "default"
+                            : "pointer",
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p
+                style={{
+                  margin: "8px 0 14px",
+                  color: "#8fa7cc",
+                  fontSize: "11px",
+                  lineHeight: 1.5,
+                }}
+              >
+                {currentTone.description}
+              </p>
+
+              <p
+                style={{
+                  margin: "0 0 8px",
+                  color: "#dbe5f4",
+                  fontSize: "13px",
+                  fontWeight: 900,
+                }}
+              >
+                再生する音声
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "8px",
+                }}
+              >
+                {(["female", "male"] as VoiceGender[]).map(
+                  (item) => {
+                    const active = item === voiceGender;
+                    const activeColors = getVoiceColors(item);
+
+                    return (
+                      <button
+                        key={item}
+                        type="button"
+                        disabled={recordingSide !== null}
+                        onClick={() => {
+                          stopAudio();
+                          setVoiceGender(item);
+                        }}
+                        style={{
+                          minHeight: "54px",
+                          padding: "9px",
+                          background: active
+                            ? activeColors.background
+                            : "#0d1421",
+                          color: active
+                            ? activeColors.color
+                            : "#e4ebf7",
+                          border: active
+                            ? `1px solid ${activeColors.border}`
+                            : "1px solid #263550",
+                          borderRadius: "12px",
+                          fontFamily: "inherit",
+                          fontSize: "15px",
+                          fontWeight: 900,
+                          cursor:
+                            recordingSide !== null
+                              ? "default"
+                              : "pointer",
+                        }}
+                      >
+                        {item === "female" ? "女性" : "男性"}
+                      </button>
+                    );
+                  }
+                )}
+              </div>
+            </div>
+          )}
         </section>
 
         {autoChangedMessage && (
@@ -1083,6 +1228,10 @@ export default function HomePage() {
                 processingSide !== "japanese"
                   ? 0.55
                   : 1,
+              boxShadow:
+                recordingSide === "japanese"
+                  ? "0 0 0 4px rgba(255,94,126,0.24), 0 0 28px rgba(255,72,112,0.78)"
+                  : "none",
             }}
           >
             {recordingSide === "japanese"
@@ -1348,6 +1497,10 @@ export default function HomePage() {
                 processingSide !== "foreign"
                   ? 0.55
                   : 1,
+              boxShadow:
+                recordingSide === "foreign"
+                  ? "0 0 0 4px rgba(255,94,126,0.24), 0 0 28px rgba(255,72,112,0.78)"
+                  : "none",
             }}
           >
             {recordingSide === "foreign"
@@ -1476,6 +1629,7 @@ export default function HomePage() {
           </div>
         </section>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
