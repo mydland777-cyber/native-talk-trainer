@@ -1,7 +1,15 @@
 export const runtime = "nodejs";
 
 type SpeechStyle = "careful" | "natural" | "casual";
-type TargetLanguage = "english" | "korean" | "chinese";
+
+type SpeechLanguage =
+  | "japanese"
+  | "english"
+  | "korean"
+  | "chinese"
+  | "german"
+  | "french"
+  | "italian";
 
 function normalizeStyle(value: string): SpeechStyle {
   if (value === "careful") return "careful";
@@ -9,10 +17,19 @@ function normalizeStyle(value: string): SpeechStyle {
   return "natural";
 }
 
-function normalizeLanguage(value: string): TargetLanguage {
-  if (value === "korean") return "korean";
-  if (value === "chinese") return "chinese";
-  return "english";
+function normalizeLanguage(value: string): SpeechLanguage {
+  switch (value) {
+    case "japanese":
+    case "english":
+    case "korean":
+    case "chinese":
+    case "german":
+    case "french":
+    case "italian":
+      return value;
+    default:
+      return "english";
+  }
 }
 
 function getVoice(style: SpeechStyle) {
@@ -21,112 +38,153 @@ function getVoice(style: SpeechStyle) {
   return "alloy";
 }
 
+function getLanguageName(language: SpeechLanguage) {
+  switch (language) {
+    case "japanese":
+      return "Japanese";
+    case "korean":
+      return "Korean";
+    case "chinese":
+      return "Mandarin Chinese";
+    case "german":
+      return "German";
+    case "french":
+      return "French";
+    case "italian":
+      return "Italian";
+    default:
+      return "English";
+  }
+}
+
 function getInstruction(
   style: SpeechStyle,
-  language: TargetLanguage
+  language: SpeechLanguage
 ) {
-  if (language === "korean") {
-    if (style === "careful") {
-      return "Speak in clear, careful, natural Korean for a Japanese learner. Slightly separate phrases, articulate clearly, and avoid sounding robotic or overly formal unless the text requires it.";
-    }
-
-    if (style === "casual") {
-      return "Speak in casual, relaxed, natural everyday Korean. Keep it conversational and fluid, with natural rhythm. Do not sound like a teacher reading slowly.";
-    }
-
-    return "Speak in natural everyday Korean. Clear, smooth, conversational, and not too formal.";
-  }
-
-  if (language === "chinese") {
-    if (style === "careful") {
-      return "Speak in clear, careful, natural Mandarin Chinese for a Japanese learner. Articulate clearly and keep the pacing slightly slower, but still natural.";
-    }
-
-    if (style === "casual") {
-      return "Speak in casual, relaxed, natural everyday Mandarin Chinese. Keep it conversational and fluid. Do not sound formal, stiff, or like a teacher reading.";
-    }
-
-    return "Speak in natural everyday Mandarin Chinese. Clear, smooth, conversational, and not too formal.";
-  }
+  const languageName = getLanguageName(language);
 
   if (style === "careful") {
-    return "Speak slowly, clearly, and carefully for a Japanese English learner. Separate words slightly and pronounce them very clearly, but still sound natural.";
+    return `
+Speak entirely in ${languageName}.
+Speak clearly, carefully, and slightly slowly for a Japanese learner.
+Pronounce the words distinctly while keeping the delivery natural.
+Do not translate, explain, or add any words.
+Read only the supplied text.
+    `.trim();
   }
 
   if (style === "casual") {
-    return "Speak in a very casual, relaxed, fast American English conversation style. Use connected speech, reduced sounds, and an informal rhythm. Do not sound formal, careful, slow, or teacher-like.";
+    return `
+Speak entirely in ${languageName}.
+Use a relaxed, natural, everyday conversational style.
+Use realistic rhythm, connected speech, and natural reductions appropriate for ${languageName}.
+Do not sound formal, stiff, robotic, or teacher-like.
+Do not translate, explain, or add any words.
+Read only the supplied text.
+    `.trim();
   }
 
-  return "Speak in a natural everyday conversational English style. Clear, natural, and not too formal.";
+  return `
+Speak entirely in ${languageName}.
+Use a clear, natural, everyday conversational style.
+Keep the pace realistic and easy to understand.
+Do not translate, explain, or add any words.
+Read only the supplied text.
+  `.trim();
 }
 
 function getSpeed(
   style: SpeechStyle,
-  language: TargetLanguage
+  language: SpeechLanguage
 ) {
-  if (language === "korean") {
-    if (style === "careful") return 0.92;
-    if (style === "casual") return 1.12;
-    return 1.0;
+  if (style === "careful") {
+    if (language === "chinese") return 0.88;
+    if (language === "french") return 0.9;
+    return 0.92;
   }
 
-  if (language === "chinese") {
-    if (style === "careful") return 0.9;
-    if (style === "casual") return 1.08;
-    return 0.98;
+  if (style === "casual") {
+    if (language === "english") return 1.25;
+    if (language === "korean") return 1.12;
+    if (language === "chinese") return 1.08;
+    if (language === "french") return 1.08;
+    if (language === "italian") return 1.1;
+    if (language === "german") return 1.08;
+    return 1.08;
   }
 
-  if (style === "careful") return 0.9;
-  if (style === "casual") return 1.35;
-  return 1.05;
+  if (language === "chinese") return 0.98;
+  return 1;
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+
     const text = String(body?.text ?? "").trim();
-    const style = normalizeStyle(String(body?.style ?? "natural").trim());
+    const style = normalizeStyle(
+      String(body?.style ?? "natural").trim()
+    );
     const language = normalizeLanguage(
       String(body?.language ?? "english").trim()
     );
 
     if (!text) {
-      return Response.json({ error: "text is required" }, { status: 400 });
+      return Response.json(
+        { error: "読み上げる文章がありません。" },
+        { status: 400 }
+      );
+    }
+
+    if (text.length > 4096) {
+      return Response.json(
+        { error: "読み上げる文章が長すぎます。" },
+        { status: 400 }
+      );
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
+
     if (!apiKey) {
       return Response.json(
-        { error: "OPENAI_API_KEY is missing" },
+        { error: "OPENAI_API_KEYが設定されていません。" },
         { status: 500 }
       );
     }
 
-    const openaiRes = await fetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini-tts",
-        voice: getVoice(style),
-        input: text,
-        format: "mp3",
-        instructions: getInstruction(style, language),
-        speed: getSpeed(style, language),
-      }),
-    });
+    const openaiResponse = await fetch(
+      "https://api.openai.com/v1/audio/speech",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini-tts",
+          voice: getVoice(style),
+          input: text,
+          response_format: "mp3",
+          instructions: getInstruction(style, language),
+          speed: getSpeed(style, language),
+        }),
+      }
+    );
 
-    if (!openaiRes.ok) {
-      const errorText = await openaiRes.text();
+    if (!openaiResponse.ok) {
+      const errorText = await openaiResponse.text();
+
+      console.error("OpenAI音声生成エラー:", errorText);
+
       return Response.json(
-        { error: `OpenAI speech error: ${errorText}` },
-        { status: openaiRes.status }
+        {
+          error: `音声を生成できませんでした: ${errorText}`,
+        },
+        { status: openaiResponse.status }
       );
     }
 
-    const arrayBuffer = await openaiRes.arrayBuffer();
+    const arrayBuffer = await openaiResponse.arrayBuffer();
 
     return new Response(arrayBuffer, {
       status: 200,
@@ -136,9 +194,16 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "failed to generate speech";
+    console.error("音声生成エラー:", error);
 
-    return Response.json({ error: message }, { status: 500 });
+    const message =
+      error instanceof Error
+        ? error.message
+        : "音声を生成できませんでした。";
+
+    return Response.json(
+      { error: message },
+      { status: 500 }
+    );
   }
 }
