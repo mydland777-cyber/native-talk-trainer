@@ -336,6 +336,49 @@ export default function HomePage() {
   }, [japaneseText, language, tone]);
 
   useEffect(() => {
+    /*
+      iPhoneのSafari／ホーム画面アプリでは、ボタン外で指を離すと
+      onPointerUpが届かない場合があるため、画面全体でも終了を監視する。
+    */
+    const release = () => {
+      if (
+        holdingSideRef.current ||
+        recordingSideRef.current
+      ) {
+        finishPress();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        release();
+      }
+    };
+
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("touchend", release);
+    window.addEventListener("touchcancel", release);
+    window.addEventListener("blur", release);
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
+
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("touchend", release);
+      window.removeEventListener("touchcancel", release);
+      window.removeEventListener("blur", release);
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+    };
+  }, []);
+
+  useEffect(() => {
     return () => {
       translateAbortRef.current?.abort();
       stopMediaStream();
@@ -490,7 +533,11 @@ export default function HomePage() {
   }
 
   function stopRecording(side: SpeakerSide) {
-    if (recordingSide !== side) return;
+    /*
+      Reactのstate更新を待たず、refで現在の録音側を判定する。
+      iPhoneで素早く指を離した場合も確実に停止できる。
+    */
+    if (recordingSideRef.current !== side) return;
 
     const recorder = mediaRecorderRef.current;
 
@@ -713,11 +760,29 @@ export default function HomePage() {
     }
   }
 
+  function finishPress(side?: SpeakerSide) {
+    const activeSide =
+      side ??
+      holdingSideRef.current ??
+      recordingSideRef.current;
+
+    setPressedSide(null);
+    holdingSideRef.current = null;
+
+    if (activeSide) {
+      stopRecording(activeSide);
+    }
+  }
+
   function handlePointerDown(
     event: ReactPointerEvent<HTMLButtonElement>,
     side: SpeakerSide
   ) {
     event.preventDefault();
+
+    if (holdingSideRef.current || recordingSideRef.current) {
+      return;
+    }
 
     setPressedSide(side);
     holdingSideRef.current = side;
@@ -725,7 +790,7 @@ export default function HomePage() {
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
-      // 非対応ブラウザではそのまま続行
+      // 非対応ブラウザではwindow側の監視で停止する
     }
 
     void startRecording(side);
@@ -737,9 +802,6 @@ export default function HomePage() {
   ) {
     event.preventDefault();
 
-    setPressedSide(null);
-    holdingSideRef.current = null;
-
     try {
       event.currentTarget.releasePointerCapture(
         event.pointerId
@@ -748,17 +810,14 @@ export default function HomePage() {
       // 解除済みの場合は何もしない
     }
 
-    stopRecording(side);
+    finishPress(side);
   }
 
   function handlePointerCancel(
     event: ReactPointerEvent<HTMLButtonElement>
   ) {
     event.preventDefault();
-
-    setPressedSide(null);
-    holdingSideRef.current = null;
-    cancelRecording();
+    finishPress();
   }
 
   return (
@@ -1221,6 +1280,9 @@ export default function HomePage() {
             style={{
               width: "100%",
               minHeight: "132px",
+              touchAction: "none",
+              userSelect: "none",
+              WebkitUserSelect: "none",
               border:
                 (pressedSide === "japanese" || recordingSide === "japanese")
                   ? "2px solid #ff839b"
@@ -1237,9 +1299,6 @@ export default function HomePage() {
               fontSize: "20px",
               fontWeight: 900,
               cursor: busy ? "default" : "pointer",
-              touchAction: "none",
-              userSelect: "none",
-              WebkitUserSelect: "none",
               WebkitTouchCallout: "none",
               whiteSpace: "pre-line",
               opacity:
@@ -1490,6 +1549,9 @@ export default function HomePage() {
             style={{
               width: "100%",
               minHeight: "132px",
+              touchAction: "none",
+              userSelect: "none",
+              WebkitUserSelect: "none",
               border:
                 (pressedSide === "foreign" || recordingSide === "foreign")
                   ? "2px solid #ff839b"
@@ -1506,9 +1568,6 @@ export default function HomePage() {
               fontSize: "20px",
               fontWeight: 900,
               cursor: busy ? "default" : "pointer",
-              touchAction: "none",
-              userSelect: "none",
-              WebkitUserSelect: "none",
               WebkitTouchCallout: "none",
               whiteSpace: "pre-line",
               opacity:
