@@ -39,34 +39,13 @@ function normalizeLanguage(value: string): SpeechLanguage {
   }
 }
 
-function getVoice(
-  language: SpeechLanguage,
-  voiceGender: VoiceGender
-) {
+function getVoice(voiceGender: VoiceGender) {
   /*
-    男性音声
+    女性と男性を固定音声で明確に分ける。
+    女性: marin
+    男性: cedar
   */
-  if (voiceGender === "male") {
-    return "cedar";
-  }
-
-  /*
-    女性音声
-    言語によって自然に聞こえやすい声を振り分ける。
-  */
-  switch (language) {
-    case "korean":
-    case "chinese":
-    case "french":
-    case "italian":
-      return "marin";
-
-    case "japanese":
-    case "english":
-    case "german":
-    default:
-      return "alloy";
-  }
+  return voiceGender === "male" ? "cedar" : "marin";
 }
 
 function getLanguageName(language: SpeechLanguage) {
@@ -103,45 +82,66 @@ function getInstruction(
 
   const voiceInstruction =
     voiceGender === "male"
-      ? "Use a natural adult male-sounding voice."
-      : "Use a natural adult female-sounding voice.";
+      ? `
+Use a clearly masculine adult voice.
+Keep the vocal tone naturally male, calm, and confident.
+Do not imitate a female or androgynous voice.
+      `.trim()
+      : `
+Use a clearly feminine adult voice.
+Keep the vocal tone naturally female, warm, and clear.
+Do not imitate a male or androgynous voice.
+      `.trim();
 
   if (style === "careful") {
     return `
 Speak entirely in ${languageName}.
+
+Voice:
 ${voiceInstruction}
-Speak clearly, politely, and slightly slowly.
-Pronounce every word distinctly while keeping the delivery natural.
-The speech will be played directly to a person during travel.
-Do not sound robotic, theatrical, or like a language teacher.
-Do not translate, explain, or add any words.
-Read only the supplied text.
+
+Speaking style:
+- Speak clearly and politely.
+- Speak slightly slowly.
+- Pronounce every word distinctly.
+- Keep the delivery natural and suitable for travel.
+- Do not sound robotic, theatrical, or teacher-like.
+- Do not translate, explain, or add any words.
+- Read only the supplied text.
     `.trim();
   }
 
   if (style === "casual") {
     return `
 Speak entirely in ${languageName}.
+
+Voice:
 ${voiceInstruction}
-Use a friendly, warm, relaxed, everyday conversational style.
-Use realistic rhythm and natural connected speech appropriate for ${languageName}.
-Do not sound rude, excessively informal, robotic, or teacher-like.
-The speech will be played directly to a person during travel.
-Do not translate, explain, or add any words.
-Read only the supplied text.
+
+Speaking style:
+- Use a friendly, warm, relaxed conversational style.
+- Use realistic rhythm and natural connected speech.
+- Do not sound rude or excessively informal.
+- Do not sound robotic or teacher-like.
+- Do not translate, explain, or add any words.
+- Read only the supplied text.
     `.trim();
   }
 
   return `
 Speak entirely in ${languageName}.
+
+Voice:
 ${voiceInstruction}
-Use a clear, natural, everyday conversational style.
-Keep the pace realistic and easy to understand.
-Sound polite enough for an ordinary travel conversation without sounding overly formal.
-The speech will be played directly to a person during travel.
-Do not sound robotic, theatrical, or teacher-like.
-Do not translate, explain, or add any words.
-Read only the supplied text.
+
+Speaking style:
+- Use a clear, natural, everyday conversational style.
+- Keep the pace realistic and easy to understand.
+- Sound polite enough for normal travel conversation.
+- Do not sound excessively formal.
+- Do not sound robotic, theatrical, or teacher-like.
+- Do not translate, explain, or add any words.
+- Read only the supplied text.
   `.trim();
 }
 
@@ -235,7 +235,7 @@ export async function POST(req: Request) {
         },
         body: JSON.stringify({
           model: "gpt-4o-mini-tts",
-          voice: getVoice(language, voiceGender),
+          voice: getVoice(voiceGender),
           input: text,
           response_format: "mp3",
           instructions: getInstruction(
