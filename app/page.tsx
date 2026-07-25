@@ -222,6 +222,9 @@ export default function HomePage() {
   const [recordingSide, setRecordingSide] =
     useState<SpeakerSide | null>(null);
 
+  const [pressedSide, setPressedSide] =
+    useState<SpeakerSide | null>(null);
+
   const [processingSide, setProcessingSide] =
     useState<SpeakerSide | null>(null);
 
@@ -236,6 +239,7 @@ export default function HomePage() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingSideRef = useRef<SpeakerSide | null>(null);
+  const holdingSideRef = useRef<SpeakerSide | null>(null);
 
   const translateAbortRef = useRef<AbortController | null>(null);
 
@@ -410,6 +414,11 @@ export default function HomePage() {
         },
       });
 
+      if (holdingSideRef.current !== side) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
       const mimeType = getSupportedMimeType();
 
       const recorder = mimeType
@@ -474,6 +483,8 @@ export default function HomePage() {
           ? "マイクの使用が許可されていません。iPhoneのSafari設定を確認してください。"
           : "録音を開始できませんでした。";
 
+      setPressedSide(null);
+      holdingSideRef.current = null;
       setErrorMessage(message);
     }
   }
@@ -708,6 +719,9 @@ export default function HomePage() {
   ) {
     event.preventDefault();
 
+    setPressedSide(side);
+    holdingSideRef.current = side;
+
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -722,6 +736,9 @@ export default function HomePage() {
     side: SpeakerSide
   ) {
     event.preventDefault();
+
+    setPressedSide(null);
+    holdingSideRef.current = null;
 
     try {
       event.currentTarget.releasePointerCapture(
@@ -738,6 +755,9 @@ export default function HomePage() {
     event: ReactPointerEvent<HTMLButtonElement>
   ) {
     event.preventDefault();
+
+    setPressedSide(null);
+    holdingSideRef.current = null;
     cancelRecording();
   }
 
@@ -1202,13 +1222,13 @@ export default function HomePage() {
               width: "100%",
               minHeight: "132px",
               border:
-                recordingSide === "japanese"
+                (pressedSide === "japanese" || recordingSide === "japanese")
                   ? "2px solid #ff839b"
                   : "2px solid #7db3ff",
               borderRadius: "24px",
               background:
-                recordingSide === "japanese"
-                  ? "linear-gradient(180deg, #b43b59, #7d263e)"
+                (pressedSide === "japanese" || recordingSide === "japanese")
+                  ? "linear-gradient(180deg, #d63f62, #8f203e)"
                   : processingSide === "japanese"
                   ? "#31476b"
                   : "linear-gradient(180deg, #8bc0ff, #679ee8)",
@@ -1229,12 +1249,12 @@ export default function HomePage() {
                   ? 0.55
                   : 1,
               boxShadow:
-                recordingSide === "japanese"
-                  ? "0 0 0 4px rgba(255,94,126,0.24), 0 0 28px rgba(255,72,112,0.78)"
+                (pressedSide === "japanese" || recordingSide === "japanese")
+                  ? "0 0 0 5px rgba(255,94,126,0.32), 0 0 36px rgba(255,50,96,0.95)"
                   : "none",
             }}
           >
-            {recordingSide === "japanese"
+            {pressedSide === "japanese" || recordingSide === "japanese"
               ? "🔴 録音中\n離すと読み取ります"
               : processingSide === "japanese"
               ? "日本語を読み取り中..."
@@ -1419,7 +1439,7 @@ export default function HomePage() {
           >
             {speaking
               ? "再生中..."
-              : `▶ ${currentLanguage.label}で相手に聞かせる`}
+              : "▶ 翻訳を再生する"}
           </button>
         </section>
 
@@ -1471,13 +1491,13 @@ export default function HomePage() {
               width: "100%",
               minHeight: "132px",
               border:
-                recordingSide === "foreign"
+                (pressedSide === "foreign" || recordingSide === "foreign")
                   ? "2px solid #ff839b"
                   : "2px solid #8fcaaa",
               borderRadius: "24px",
               background:
-                recordingSide === "foreign"
-                  ? "linear-gradient(180deg, #b43b59, #7d263e)"
+                (pressedSide === "foreign" || recordingSide === "foreign")
+                  ? "linear-gradient(180deg, #d63f62, #8f203e)"
                   : processingSide === "foreign"
                   ? "#365644"
                   : "linear-gradient(180deg, #a8dfbd, #76b893)",
@@ -1498,12 +1518,12 @@ export default function HomePage() {
                   ? 0.55
                   : 1,
               boxShadow:
-                recordingSide === "foreign"
-                  ? "0 0 0 4px rgba(255,94,126,0.24), 0 0 28px rgba(255,72,112,0.78)"
+                (pressedSide === "foreign" || recordingSide === "foreign")
+                  ? "0 0 0 5px rgba(255,94,126,0.32), 0 0 36px rgba(255,50,96,0.95)"
                   : "none",
             }}
           >
-            {recordingSide === "foreign"
+            {pressedSide === "foreign" || recordingSide === "foreign"
               ? "🔴 録音中\n離すと翻訳"
               : processingSide === "foreign"
               ? "言語判定・翻訳中..."
