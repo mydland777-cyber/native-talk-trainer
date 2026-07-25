@@ -1,61 +1,74 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
-type TargetLanguage = "english" | "german" | "french" | "italian";
+type TargetLanguage =
+  | "english"
+  | "korean"
+  | "chinese"
+  | "german"
+  | "french"
+  | "italian";
+
 type TranslationTone = "standard" | "polite" | "friendly";
+type SpeakerSide = "japanese" | "foreign";
 
-type LanguageItem = {
+type DetectedLanguage = {
+  code: string;
+  key: string;
+  label: string;
+};
+
+type ForeignResult = {
+  originalText: string;
+  translatedText: string;
+  detectedLanguage: DetectedLanguage;
+};
+
+const LANGUAGES: {
   key: TargetLanguage;
   label: string;
-  nativeLabel: string;
-  flag: string;
-  placeholder: string;
-};
-
-type ToneItem = {
-  key: TranslationTone;
-  label: string;
-  description: string;
-};
-
-const LANGUAGES: LanguageItem[] = [
+}[] = [
   {
     key: "english",
     label: "英語",
-    nativeLabel: "English",
-    flag: "🇬🇧",
-    placeholder: "例：駅はどこですか？",
+  },
+  {
+    key: "korean",
+    label: "韓国語",
+  },
+  {
+    key: "chinese",
+    label: "中国語",
   },
   {
     key: "german",
     label: "ドイツ語",
-    nativeLabel: "Deutsch",
-    flag: "🇩🇪",
-    placeholder: "例：この電車はベルリンへ行きますか？",
   },
   {
     key: "french",
     label: "フランス語",
-    nativeLabel: "Français",
-    flag: "🇫🇷",
-    placeholder: "例：おすすめの料理はどれですか？",
   },
   {
     key: "italian",
     label: "イタリア語",
-    nativeLabel: "Italiano",
-    flag: "🇮🇹",
-    placeholder: "例：ホテルまでタクシーでお願いします。",
   },
 ];
 
-const TONES: ToneItem[] = [
+const TONES: {
+  key: TranslationTone;
+  label: string;
+  description: string;
+}[] = [
   {
     key: "standard",
     label: "標準・自然",
-    description: "現地の人が普通に使う自然な話し方",
+    description: "現地の人が普通に使う、自然で失礼のない話し方",
   },
   {
     key: "polite",
@@ -69,6 +82,31 @@ const TONES: ToneItem[] = [
   },
 ];
 
+function isTargetLanguage(value: string): value is TargetLanguage {
+  return LANGUAGES.some((item) => item.key === value);
+}
+
+function getSupportedMimeType() {
+  if (typeof MediaRecorder === "undefined") {
+    return "";
+  }
+
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+  ];
+
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
+}
+
+function getFileExtension(mimeType: string) {
+  if (mimeType.includes("mp4")) return "m4a";
+  if (mimeType.includes("ogg")) return "ogg";
+  return "webm";
+}
+
 export default function HomePage() {
   const [language, setLanguage] =
     useState<TargetLanguage>("english");
@@ -76,47 +114,62 @@ export default function HomePage() {
   const [tone, setTone] =
     useState<TranslationTone>("standard");
 
-  const [input, setInput] = useState("");
+  const [japaneseText, setJapaneseText] = useState("");
   const [translatedText, setTranslatedText] = useState("");
-  const [loading, setLoading] = useState(false);
+
+  const [foreignResult, setForeignResult] =
+    useState<ForeignResult | null>(null);
+
+  const [recordingSide, setRecordingSide] =
+    useState<SpeakerSide | null>(null);
+
+  const [processingSide, setProcessingSide] =
+    useState<SpeakerSide | null>(null);
+
+  const [translatingJapanese, setTranslatingJapanese] =
+    useState(false);
+
   const [speaking, setSpeaking] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [autoChangedMessage, setAutoChangedMessage] = useState("");
 
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingSideRef = useRef<SpeakerSide | null>(null);
+
+  const translateAbortRef = useRef<AbortController | null>(null);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
 
-  const currentLanguage = useMemo(() => {
-    return (
-      LANGUAGES.find((item) => item.key === language) ??
-      LANGUAGES[0]
-    );
-  }, [language]);
+  const currentLanguage =
+    LANGUAGES.find((item) => item.key === language) ?? LANGUAGES[0];
 
-  const currentTone = useMemo(() => {
-    return (
-      TONES.find((item) => item.key === tone) ??
-      TONES[0]
-    );
-  }, [tone]);
+  const currentTone =
+    TONES.find((item) => item.key === tone) ?? TONES[0];
+
+  const busy =
+    recordingSide !== null ||
+    processingSide !== null ||
+    translatingJapanese;
 
   useEffect(() => {
-    const text = input.trim();
+    const text = japaneseText.trim();
 
-    abortControllerRef.current?.abort();
+    translateAbortRef.current?.abort();
 
     if (!text) {
       setTranslatedText("");
-      setLoading(false);
-      setErrorMessage("");
+      setTranslatingJapanese(false);
       return;
     }
 
     const controller = new AbortController();
-    abortControllerRef.current = controller;
+    translateAbortRef.current = controller;
 
     const timer = window.setTimeout(async () => {
-      setLoading(true);
+      setTranslatingJapanese(true);
       setErrorMessage("");
 
       try {
@@ -142,9 +195,15 @@ export default function HomePage() {
           );
         }
 
-        setTranslatedText(
-          String(data?.translatedText ?? "").trim()
-        );
+        const nextTranslatedText = String(
+          data?.translatedText ?? ""
+        ).trim();
+
+        if (!nextTranslatedText) {
+          throw new Error("翻訳結果を取得できませんでした。");
+        }
+
+        setTranslatedText(nextTranslatedText);
       } catch (error) {
         if (
           error instanceof DOMException &&
@@ -162,7 +221,7 @@ export default function HomePage() {
         );
       } finally {
         if (!controller.signal.aborted) {
-          setLoading(false);
+          setTranslatingJapanese(false);
         }
       }
     }, 800);
@@ -171,14 +230,23 @@ export default function HomePage() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [input, language, tone]);
+  }, [japaneseText, language, tone]);
 
   useEffect(() => {
     return () => {
-      abortControllerRef.current?.abort();
+      translateAbortRef.current?.abort();
+      stopMediaStream();
       stopAudio();
     };
   }, []);
+
+  function stopMediaStream() {
+    mediaStreamRef.current
+      ?.getTracks()
+      .forEach((track) => track.stop());
+
+    mediaStreamRef.current = null;
+  }
 
   function stopAudio() {
     if (audioRef.current) {
@@ -193,6 +261,271 @@ export default function HomePage() {
     }
 
     setSpeaking(false);
+  }
+
+  function clearJapaneseText() {
+    translateAbortRef.current?.abort();
+    stopAudio();
+
+    setJapaneseText("");
+    setTranslatedText("");
+    setErrorMessage("");
+    setTranslatingJapanese(false);
+  }
+
+  async function startRecording(side: SpeakerSide) {
+    if (recordingSide || processingSide) return;
+
+    setErrorMessage("");
+    setAutoChangedMessage("");
+    stopAudio();
+
+    if (
+      typeof window === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      setErrorMessage(
+        "このブラウザでは音声録音を利用できません。"
+      );
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      const mimeType = getSupportedMimeType();
+
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+      recordingSideRef.current = side;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onerror = () => {
+        setErrorMessage("録音中にエラーが発生しました。");
+        setRecordingSide(null);
+        recordingSideRef.current = null;
+        stopMediaStream();
+      };
+
+      recorder.onstop = async () => {
+        const recordedSide = recordingSideRef.current;
+        const chunks = [...audioChunksRef.current];
+
+        audioChunksRef.current = [];
+        recordingSideRef.current = null;
+        mediaRecorderRef.current = null;
+        setRecordingSide(null);
+        stopMediaStream();
+
+        if (!recordedSide || chunks.length === 0) {
+          return;
+        }
+
+        const recordedMimeType =
+          recorder.mimeType || mimeType || "audio/webm";
+
+        const audioBlob = new Blob(chunks, {
+          type: recordedMimeType,
+        });
+
+        await processRecording(
+          recordedSide,
+          audioBlob,
+          recordedMimeType
+        );
+      };
+
+      recorder.start();
+      setRecordingSide(side);
+    } catch (error) {
+      console.error(error);
+      stopMediaStream();
+
+      const message =
+        error instanceof DOMException &&
+        error.name === "NotAllowedError"
+          ? "マイクの使用が許可されていません。iPhoneのSafari設定を確認してください。"
+          : "録音を開始できませんでした。";
+
+      setErrorMessage(message);
+    }
+  }
+
+  function stopRecording(side: SpeakerSide) {
+    if (recordingSide !== side) return;
+
+    const recorder = mediaRecorderRef.current;
+
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+      return;
+    }
+
+    setRecordingSide(null);
+    recordingSideRef.current = null;
+    stopMediaStream();
+  }
+
+  function cancelRecording() {
+    const recorder = mediaRecorderRef.current;
+
+    audioChunksRef.current = [];
+    recordingSideRef.current = null;
+
+    if (recorder && recorder.state !== "inactive") {
+      recorder.onstop = () => {
+        setRecordingSide(null);
+        stopMediaStream();
+      };
+
+      recorder.stop();
+      return;
+    }
+
+    setRecordingSide(null);
+    stopMediaStream();
+  }
+
+  async function processRecording(
+    side: SpeakerSide,
+    audioBlob: Blob,
+    mimeType: string
+  ) {
+    setProcessingSide(side);
+    setErrorMessage("");
+    setAutoChangedMessage("");
+
+    try {
+      const formData = new FormData();
+      const extension = getFileExtension(mimeType);
+
+      formData.append(
+        "audio",
+        audioBlob,
+        `recording.${extension}`
+      );
+
+      formData.append(
+        "language",
+        side === "japanese" ? "japanese" : "auto"
+      );
+
+      const transcribeResponse = await fetch("/api/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+
+      const transcribeData = await transcribeResponse.json();
+
+      if (!transcribeResponse.ok) {
+        throw new Error(
+          transcribeData?.error ||
+            "音声を読み取れませんでした。"
+        );
+      }
+
+      const originalText = String(
+        transcribeData?.text ?? ""
+      ).trim();
+
+      if (!originalText) {
+        throw new Error("音声を聞き取れませんでした。");
+      }
+
+      if (side === "japanese") {
+        setJapaneseText(originalText);
+        return;
+      }
+
+      const detectedLanguage: DetectedLanguage = {
+        code: String(
+          transcribeData?.detectedLanguage?.code ?? "unknown"
+        ),
+        key: String(
+          transcribeData?.detectedLanguage?.key ?? "unknown"
+        ),
+        label: String(
+          transcribeData?.detectedLanguage?.label ??
+            "不明な言語"
+        ),
+      };
+
+      let translationLanguage = language;
+
+      if (isTargetLanguage(detectedLanguage.key)) {
+        translationLanguage = detectedLanguage.key;
+
+        if (detectedLanguage.key !== language) {
+          setLanguage(detectedLanguage.key);
+
+          setAutoChangedMessage(
+            `相手の言葉を${detectedLanguage.label}と判定し、こちらから話す言語も自動で変更しました。`
+          );
+        }
+      }
+
+      const translateResponse = await fetch("/api/translate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: originalText,
+          direction: "foreign-to-japanese",
+          language: translationLanguage,
+          tone: "standard",
+        }),
+      });
+
+      const translateData = await translateResponse.json();
+
+      if (!translateResponse.ok) {
+        throw new Error(
+          translateData?.error || "翻訳に失敗しました。"
+        );
+      }
+
+      const nextTranslatedText = String(
+        translateData?.translatedText ?? ""
+      ).trim();
+
+      if (!nextTranslatedText) {
+        throw new Error("翻訳結果を取得できませんでした。");
+      }
+
+      setForeignResult({
+        originalText,
+        translatedText: nextTranslatedText,
+        detectedLanguage,
+      });
+    } catch (error) {
+      console.error(error);
+
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "音声の処理に失敗しました。"
+      );
+    } finally {
+      setProcessingSide(null);
+    }
   }
 
   async function playTranslation() {
@@ -211,13 +544,13 @@ export default function HomePage() {
         },
         body: JSON.stringify({
           text: translatedText,
+          language,
           style:
             tone === "polite"
               ? "careful"
               : tone === "friendly"
               ? "casual"
               : "natural",
-          language,
         }),
       });
 
@@ -258,14 +591,43 @@ export default function HomePage() {
     }
   }
 
-  function clearText() {
-    abortControllerRef.current?.abort();
-    stopAudio();
+  function handlePointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    side: SpeakerSide
+  ) {
+    event.preventDefault();
 
-    setInput("");
-    setTranslatedText("");
-    setErrorMessage("");
-    setLoading(false);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // 非対応ブラウザではそのまま続行
+    }
+
+    void startRecording(side);
+  }
+
+  function handlePointerUp(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    side: SpeakerSide
+  ) {
+    event.preventDefault();
+
+    try {
+      event.currentTarget.releasePointerCapture(
+        event.pointerId
+      );
+    } catch {
+      // 解除済みの場合は何もしない
+    }
+
+    stopRecording(side);
+  }
+
+  function handlePointerCancel(
+    event: ReactPointerEvent<HTMLButtonElement>
+  ) {
+    event.preventDefault();
+    cancelRecording();
   }
 
   return (
@@ -275,7 +637,7 @@ export default function HomePage() {
         background:
           "radial-gradient(circle at top, rgba(33,62,110,0.24), transparent 28%), #05070d",
         color: "#f5f7ff",
-        padding: "18px 14px 40px",
+        padding: "16px 12px 40px",
       }}
     >
       <div
@@ -287,16 +649,16 @@ export default function HomePage() {
       >
         <header
           style={{
-            marginBottom: "18px",
+            marginBottom: "16px",
           }}
         >
           <p
             style={{
               margin: 0,
-              fontSize: "12px",
+              fontSize: "13px",
               color: "#8fa7cc",
-              letterSpacing: "0.14em",
               fontWeight: 800,
+              letterSpacing: "0.08em",
             }}
           >
             ことばパスポート
@@ -304,25 +666,23 @@ export default function HomePage() {
 
           <h1
             style={{
-              margin: "8px 0 8px",
-              fontSize: "34px",
-              lineHeight: 1.2,
-              fontWeight: 900,
+              margin: "7px 0 5px",
+              fontSize: "30px",
               color: "#ffffff",
             }}
           >
-            世界と話せる旅行翻訳
+            世界旅行の翻訳
           </h1>
 
           <p
             style={{
               margin: 0,
-              fontSize: "14px",
-              lineHeight: 1.7,
               color: "#aab8cf",
+              fontSize: "13px",
+              lineHeight: 1.6,
             }}
           >
-            日本語を入力すると、自動で旅行先の言葉へ翻訳します。
+            日本語を話すか入力すると、相手の言葉へ翻訳します。
           </p>
         </header>
 
@@ -330,14 +690,14 @@ export default function HomePage() {
           style={{
             background: "rgba(13,17,26,0.94)",
             border: "1px solid #1c2538",
-            borderRadius: "22px",
-            padding: "16px",
-            marginBottom: "14px",
+            borderRadius: "20px",
+            padding: "14px",
+            marginBottom: "12px",
           }}
         >
           <h2
             style={{
-              margin: "0 0 12px",
+              margin: "0 0 10px",
               fontSize: "15px",
               color: "#ffffff",
             }}
@@ -349,8 +709,8 @@ export default function HomePage() {
             style={{
               display: "grid",
               gridTemplateColumns:
-                "repeat(2, minmax(0, 1fr))",
-              gap: "10px",
+                "repeat(3, minmax(0, 1fr))",
+              gap: "8px",
             }}
           >
             {LANGUAGES.map((item) => {
@@ -360,12 +720,15 @@ export default function HomePage() {
                 <button
                   key={item.key}
                   type="button"
+                  disabled={recordingSide !== null}
                   onClick={() => {
                     stopAudio();
                     setLanguage(item.key);
+                    setAutoChangedMessage("");
                   }}
                   style={{
-                    minHeight: "68px",
+                    minHeight: "62px",
+                    padding: "8px 4px",
                     background: active
                       ? "#7db3ff"
                       : "#0b111d",
@@ -375,60 +738,50 @@ export default function HomePage() {
                     border: active
                       ? "1px solid #7db3ff"
                       : "1px solid #22304a",
-                    borderRadius: "15px",
-                    padding: "10px 8px",
-                    cursor: "pointer",
+                    borderRadius: "13px",
                     fontFamily: "inherit",
+                    cursor:
+                      recordingSide !== null
+                        ? "default"
+                        : "pointer",
+                    fontSize: "16px",
+                    fontWeight: 900,
+                    opacity:
+                      recordingSide !== null && !active
+                        ? 0.55
+                        : 1,
                   }}
                 >
-                  <span
-                    style={{
-                      display: "block",
-                      fontSize: "22px",
-                    }}
-                  >
-                    {item.flag}
-                  </span>
-
-                  <span
-                    style={{
-                      display: "block",
-                      marginTop: "3px",
-                      fontSize: "14px",
-                      fontWeight: 900,
-                    }}
-                  >
-                    {item.label}
-                  </span>
-
-                  <span
-                    style={{
-                      display: "block",
-                      marginTop: "2px",
-                      fontSize: "11px",
-                      opacity: 0.78,
-                    }}
-                  >
-                    {item.nativeLabel}
-                  </span>
+                  {item.label}
                 </button>
               );
             })}
           </div>
+
+          <p
+            style={{
+              margin: "10px 0 0",
+              color: "#8fa7cc",
+              fontSize: "11px",
+              lineHeight: 1.6,
+            }}
+          >
+            相手の言語を検知すると、自動で切り替わります。
+          </p>
         </section>
 
         <section
           style={{
             background: "rgba(13,17,26,0.94)",
             border: "1px solid #1c2538",
-            borderRadius: "22px",
-            padding: "16px",
-            marginBottom: "14px",
+            borderRadius: "20px",
+            padding: "14px",
+            marginBottom: "12px",
           }}
         >
           <h2
             style={{
-              margin: "0 0 12px",
+              margin: "0 0 10px",
               fontSize: "15px",
               color: "#ffffff",
             }}
@@ -439,7 +792,9 @@ export default function HomePage() {
           <div
             style={{
               display: "grid",
-              gap: "9px",
+              gridTemplateColumns:
+                "repeat(3, minmax(0, 1fr))",
+              gap: "8px",
             }}
           >
             {TONES.map((item) => {
@@ -449,151 +804,79 @@ export default function HomePage() {
                 <button
                   key={item.key}
                   type="button"
+                  disabled={recordingSide !== null}
                   onClick={() => {
                     stopAudio();
                     setTone(item.key);
                   }}
                   style={{
-                    width: "100%",
+                    minHeight: "54px",
+                    padding: "8px 5px",
                     background: active
                       ? "#172b47"
                       : "#0b111d",
-                    color: "#f5f7ff",
+                    color: active
+                      ? "#a9d0ff"
+                      : "#e4ebf7",
                     border: active
                       ? "1px solid #7db3ff"
                       : "1px solid #22304a",
-                    borderRadius: "14px",
-                    padding: "13px 14px",
-                    textAlign: "left",
-                    cursor: "pointer",
+                    borderRadius: "12px",
                     fontFamily: "inherit",
+                    fontSize: "13px",
+                    fontWeight: 900,
+                    cursor:
+                      recordingSide !== null
+                        ? "default"
+                        : "pointer",
                   }}
                 >
-                  <span
-                    style={{
-                      display: "block",
-                      fontSize: "14px",
-                      fontWeight: 900,
-                      color: active
-                        ? "#9cc8ff"
-                        : "#ffffff",
-                    }}
-                  >
-                    {item.label}
-                  </span>
-
-                  <span
-                    style={{
-                      display: "block",
-                      marginTop: "4px",
-                      fontSize: "12px",
-                      color: "#aab8cf",
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    {item.description}
-                  </span>
+                  {item.label}
                 </button>
               );
             })}
           </div>
-        </section>
-
-        <section
-          style={{
-            background: "rgba(13,17,26,0.94)",
-            border: "1px solid #1c2538",
-            borderRadius: "22px",
-            padding: "16px",
-            marginBottom: "14px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: "10px",
-              marginBottom: "10px",
-            }}
-          >
-            <h2
-              style={{
-                margin: 0,
-                fontSize: "15px",
-                color: "#ffffff",
-              }}
-            >
-              日本語を入力
-            </h2>
-
-            {input && (
-              <button
-                type="button"
-                onClick={clearText}
-                style={{
-                  background: "transparent",
-                  color: "#9eb2d0",
-                  border: "none",
-                  padding: "4px",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  fontSize: "13px",
-                  fontWeight: 700,
-                }}
-              >
-                全部消す
-              </button>
-            )}
-          </div>
-
-          <textarea
-            value={input}
-            onChange={(event) =>
-              setInput(event.target.value)
-            }
-            placeholder={currentLanguage.placeholder}
-            rows={5}
-            style={{
-              width: "100%",
-              minHeight: "130px",
-              resize: "vertical",
-              boxSizing: "border-box",
-              background: "#070b14",
-              color: "#f5f7ff",
-              border: "1px solid #24304a",
-              borderRadius: "16px",
-              padding: "15px",
-              outline: "none",
-              fontSize: "17px",
-              lineHeight: 1.7,
-              fontFamily: "inherit",
-            }}
-          />
 
           <p
             style={{
-              margin: "10px 0 0",
-              color: "#7f8da5",
-              fontSize: "12px",
+              margin: "9px 0 0",
+              color: "#8fa7cc",
+              fontSize: "11px",
+              lineHeight: 1.5,
+            }}
+          >
+            {currentTone.description}
+          </p>
+        </section>
+
+        {autoChangedMessage && (
+          <div
+            style={{
+              marginBottom: "12px",
+              padding: "12px 14px",
+              borderRadius: "14px",
+              border: "1px solid #356847",
+              background: "rgba(47,110,70,0.24)",
+              color: "#c8f3d6",
+              fontSize: "13px",
               lineHeight: 1.6,
             }}
           >
-            入力が止まってから約0.8秒後に自動翻訳します。
-          </p>
-        </section>
+            {autoChangedMessage}
+          </div>
+        )}
 
         {errorMessage && (
           <div
             style={{
-              marginBottom: "14px",
-              padding: "13px 15px",
-              borderRadius: "15px",
+              marginBottom: "12px",
+              padding: "12px 14px",
+              borderRadius: "14px",
               border: "1px solid #7f3244",
               background: "rgba(102,25,45,0.3)",
               color: "#ffdbe3",
-              fontSize: "14px",
-              lineHeight: 1.7,
+              fontSize: "13px",
+              lineHeight: 1.6,
             }}
           >
             {errorMessage}
@@ -609,110 +892,255 @@ export default function HomePage() {
             marginBottom: "14px",
           }}
         >
-          <div
+          <h2
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: "10px",
-              marginBottom: "10px",
+              margin: "0 0 5px",
+              fontSize: "22px",
+              color: "#ffffff",
             }}
           >
-            <h2
-              style={{
-                margin: 0,
-                fontSize: "15px",
-                color: "#ffffff",
-              }}
-            >
-              {currentLanguage.flag} {currentLanguage.label}の翻訳
-            </h2>
+            こちらから伝える
+          </h2>
 
-            <span
+          <p
+            style={{
+              margin: "0 0 14px",
+              color: "#aab8cf",
+              fontSize: "13px",
+              lineHeight: 1.6,
+            }}
+          >
+            日本語で話すか、文字を入力してください。
+          </p>
+
+          <button
+            type="button"
+            disabled={
+              busy && recordingSide !== "japanese"
+            }
+            onPointerDown={(event) =>
+              handlePointerDown(event, "japanese")
+            }
+            onPointerUp={(event) =>
+              handlePointerUp(event, "japanese")
+            }
+            onPointerCancel={handlePointerCancel}
+            onContextMenu={(event) =>
+              event.preventDefault()
+            }
+            style={{
+              width: "100%",
+              minHeight: "132px",
+              border:
+                recordingSide === "japanese"
+                  ? "2px solid #ff839b"
+                  : "2px solid #7db3ff",
+              borderRadius: "24px",
+              background:
+                recordingSide === "japanese"
+                  ? "linear-gradient(180deg, #b43b59, #7d263e)"
+                  : processingSide === "japanese"
+                  ? "#31476b"
+                  : "linear-gradient(180deg, #8bc0ff, #679ee8)",
+              color: "#06101d",
+              fontFamily: "inherit",
+              fontSize: "20px",
+              fontWeight: 900,
+              cursor: busy ? "default" : "pointer",
+              touchAction: "none",
+              userSelect: "none",
+              WebkitUserSelect: "none",
+              WebkitTouchCallout: "none",
+              whiteSpace: "pre-line",
+              opacity:
+                busy &&
+                recordingSide !== "japanese" &&
+                processingSide !== "japanese"
+                  ? 0.55
+                  : 1,
+            }}
+          >
+            {recordingSide === "japanese"
+              ? "🔴 録音中\n離すと読み取ります"
+              : processingSide === "japanese"
+              ? "日本語を読み取り中..."
+              : "🎤 押して日本語で話す"}
+          </button>
+
+          <div
+            style={{
+              marginTop: "14px",
+            }}
+          >
+            <div
               style={{
-                fontSize: "12px",
-                color: "#8fa7cc",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "10px",
+                marginBottom: "8px",
               }}
             >
-              {currentTone.label}
-            </span>
+              <label
+                htmlFor="japanese-input"
+                style={{
+                  color: "#ffffff",
+                  fontSize: "14px",
+                  fontWeight: 800,
+                }}
+              >
+                日本語を入力・修正
+              </label>
+
+              {japaneseText && (
+                <button
+                  type="button"
+                  onClick={clearJapaneseText}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "#9eb2d0",
+                    padding: "4px",
+                    fontFamily: "inherit",
+                    fontSize: "12px",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  全部消す
+                </button>
+              )}
+            </div>
+
+            <textarea
+              id="japanese-input"
+              value={japaneseText}
+              onChange={(event) =>
+                setJapaneseText(event.target.value)
+              }
+              placeholder="例：中央駅までお願いします。"
+              rows={4}
+              style={{
+                width: "100%",
+                minHeight: "112px",
+                boxSizing: "border-box",
+                resize: "vertical",
+                background: "#070b14",
+                color: "#f5f7ff",
+                border: "1px solid #24304a",
+                borderRadius: "15px",
+                padding: "14px",
+                outline: "none",
+                fontFamily: "inherit",
+                fontSize: "17px",
+                lineHeight: 1.7,
+              }}
+            />
+
+            <p
+              style={{
+                margin: "8px 0 0",
+                color: "#7f8da5",
+                fontSize: "11px",
+                lineHeight: 1.6,
+              }}
+            >
+              入力や修正が止まってから約0.8秒後に自動翻訳します。
+            </p>
           </div>
 
           <div
             style={{
-              minHeight: "138px",
+              marginTop: "12px",
               background: "#0b111d",
               border: "1px solid #22304a",
-              borderRadius: "16px",
-              padding: "16px",
-              display: "flex",
-              alignItems: "center",
+              borderRadius: "15px",
+              padding: "14px",
+              minHeight: "110px",
             }}
           >
-            {loading ? (
+            <p
+              style={{
+                margin: "0 0 6px",
+                color: "#8fa7cc",
+                fontSize: "11px",
+                fontWeight: 800,
+              }}
+            >
+              {currentLanguage.label}への翻訳
+            </p>
+
+            {translatingJapanese ? (
               <p
                 style={{
                   margin: 0,
                   color: "#91a1bb",
                   fontSize: "15px",
+                  lineHeight: 1.6,
                 }}
               >
                 翻訳しています...
-              </p>
-            ) : translatedText ? (
-              <p
-                style={{
-                  margin: 0,
-                  color: "#ffffff",
-                  fontSize: "26px",
-                  fontWeight: 800,
-                  lineHeight: 1.55,
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                }}
-              >
-                {translatedText}
               </p>
             ) : (
               <p
                 style={{
                   margin: 0,
-                  color: "#66758d",
-                  fontSize: "15px",
-                  lineHeight: 1.7,
+                  color: translatedText
+                    ? "#ffffff"
+                    : "#66758d",
+                  fontSize: "24px",
+                  fontWeight: 800,
+                  lineHeight: 1.5,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
                 }}
               >
-                翻訳結果がここに表示されます。
+                {translatedText ||
+                  "翻訳結果がここに表示されます。"}
               </p>
             )}
           </div>
 
           <button
             type="button"
-            disabled={!translatedText || loading}
+            disabled={
+              !translatedText ||
+              translatingJapanese ||
+              recordingSide !== null ||
+              processingSide !== null
+            }
             onClick={() => void playTranslation()}
             style={{
               width: "100%",
+              minHeight: "62px",
               marginTop: "12px",
-              minHeight: "58px",
               background:
-                translatedText && !loading
+                translatedText &&
+                !translatingJapanese &&
+                recordingSide === null &&
+                processingSide === null
                   ? "#7db3ff"
                   : "#334155",
               color:
-                translatedText && !loading
+                translatedText &&
+                !translatingJapanese &&
+                recordingSide === null &&
+                processingSide === null
                   ? "#07101d"
                   : "#8794a8",
               border: "none",
-              borderRadius: "15px",
-              padding: "14px 16px",
+              borderRadius: "16px",
+              padding: "14px",
+              fontFamily: "inherit",
+              fontSize: "17px",
+              fontWeight: 900,
               cursor:
-                translatedText && !loading
+                translatedText &&
+                !translatingJapanese &&
+                recordingSide === null &&
+                processingSide === null
                   ? "pointer"
                   : "default",
-              fontFamily: "inherit",
-              fontSize: "16px",
-              fontWeight: 900,
             }}
           >
             {speaking
@@ -721,29 +1149,207 @@ export default function HomePage() {
           </button>
         </section>
 
-        <Link
-          href="/translate"
+        <section
           style={{
-            width: "100%",
-            minHeight: "70px",
-            boxSizing: "border-box",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background:
-              "linear-gradient(180deg, #a8dfbd, #76b893)",
-            color: "#06120c",
-            borderRadius: "18px",
+            background: "rgba(13,17,26,0.94)",
+            border: "1px solid #1c2538",
+            borderRadius: "22px",
             padding: "16px",
-            textDecoration: "none",
-            textAlign: "center",
-            fontSize: "18px",
-            fontWeight: 900,
-            boxShadow: "0 14px 30px rgba(0,0,0,0.3)",
           }}
         >
-          🎤 音声で対面通訳をする
-        </Link>
+          <h2
+            style={{
+              margin: "0 0 5px",
+              fontSize: "22px",
+              color: "#ffffff",
+            }}
+          >
+            相手の言葉を聞く
+          </h2>
+
+          <p
+            style={{
+              margin: "0 0 14px",
+              color: "#aab8cf",
+              fontSize: "13px",
+              lineHeight: 1.6,
+            }}
+          >
+            相手の言語を自動で判定し、日本語へ翻訳します。
+          </p>
+
+          <button
+            type="button"
+            disabled={
+              busy && recordingSide !== "foreign"
+            }
+            onPointerDown={(event) =>
+              handlePointerDown(event, "foreign")
+            }
+            onPointerUp={(event) =>
+              handlePointerUp(event, "foreign")
+            }
+            onPointerCancel={handlePointerCancel}
+            onContextMenu={(event) =>
+              event.preventDefault()
+            }
+            style={{
+              width: "100%",
+              minHeight: "132px",
+              border:
+                recordingSide === "foreign"
+                  ? "2px solid #ff839b"
+                  : "2px solid #8fcaaa",
+              borderRadius: "24px",
+              background:
+                recordingSide === "foreign"
+                  ? "linear-gradient(180deg, #b43b59, #7d263e)"
+                  : processingSide === "foreign"
+                  ? "#365644"
+                  : "linear-gradient(180deg, #a8dfbd, #76b893)",
+              color: "#06120c",
+              fontFamily: "inherit",
+              fontSize: "20px",
+              fontWeight: 900,
+              cursor: busy ? "default" : "pointer",
+              touchAction: "none",
+              userSelect: "none",
+              WebkitUserSelect: "none",
+              WebkitTouchCallout: "none",
+              whiteSpace: "pre-line",
+              opacity:
+                busy &&
+                recordingSide !== "foreign" &&
+                processingSide !== "foreign"
+                  ? 0.55
+                  : 1,
+            }}
+          >
+            {recordingSide === "foreign"
+              ? "🔴 録音中\n離すと翻訳"
+              : processingSide === "foreign"
+              ? "言語判定・翻訳中..."
+              : "🎤 押して相手に話してもらう"}
+          </button>
+
+          <div
+            style={{
+              display: "grid",
+              gap: "10px",
+              marginTop: "14px",
+            }}
+          >
+            <div
+              style={{
+                background: "#0b111d",
+                border: "1px solid #22304a",
+                borderRadius: "15px",
+                padding: "14px",
+              }}
+            >
+              <p
+                style={{
+                  margin: "0 0 6px",
+                  color: "#8fa7cc",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                }}
+              >
+                検知した言語
+              </p>
+
+              <p
+                style={{
+                  margin: 0,
+                  color: foreignResult
+                    ? "#ffffff"
+                    : "#66758d",
+                  fontSize: "20px",
+                  fontWeight: 800,
+                  lineHeight: 1.5,
+                }}
+              >
+                {foreignResult?.detectedLanguage.label ??
+                  "相手が話すと言語を自動で判定します。"}
+              </p>
+            </div>
+
+            <div
+              style={{
+                background: "#0b111d",
+                border: "1px solid #22304a",
+                borderRadius: "15px",
+                padding: "14px",
+                minHeight: "76px",
+              }}
+            >
+              <p
+                style={{
+                  margin: "0 0 6px",
+                  color: "#8fa7cc",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                }}
+              >
+                読み取った相手の言葉
+              </p>
+
+              <p
+                style={{
+                  margin: 0,
+                  color: foreignResult
+                    ? "#f5f7ff"
+                    : "#66758d",
+                  fontSize: "17px",
+                  lineHeight: 1.6,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                }}
+              >
+                {foreignResult?.originalText ??
+                  "読み取った文章がここに表示されます。"}
+              </p>
+            </div>
+
+            <div
+              style={{
+                background: "#0b111d",
+                border: "1px solid #22304a",
+                borderRadius: "15px",
+                padding: "14px",
+                minHeight: "110px",
+              }}
+            >
+              <p
+                style={{
+                  margin: "0 0 6px",
+                  color: "#8fa7cc",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                }}
+              >
+                日本語への翻訳
+              </p>
+
+              <p
+                style={{
+                  margin: 0,
+                  color: foreignResult
+                    ? "#ffffff"
+                    : "#66758d",
+                  fontSize: "24px",
+                  fontWeight: 800,
+                  lineHeight: 1.5,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                }}
+              >
+                {foreignResult?.translatedText ??
+                  "日本語の翻訳結果がここに表示されます。"}
+              </p>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   );
