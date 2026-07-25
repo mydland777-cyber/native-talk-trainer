@@ -16,6 +16,7 @@ type TargetLanguage =
   | "italian";
 
 type TranslationTone = "standard" | "polite" | "friendly";
+type VoiceGender = "female" | "male";
 type SpeakerSide = "japanese" | "foreign";
 
 type DetectedLanguage = {
@@ -113,6 +114,9 @@ export default function HomePage() {
 
   const [tone, setTone] =
     useState<TranslationTone>("standard");
+
+  const [voiceGender, setVoiceGender] =
+    useState<VoiceGender>("female");
 
   const [japaneseText, setJapaneseText] = useState("");
   const [translatedText, setTranslatedText] = useState("");
@@ -249,9 +253,20 @@ export default function HomePage() {
   }
 
   function stopAudio() {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
+    const audio = audioRef.current;
+
+    if (audio) {
+      /*
+        srcを空にした際の不要なerrorイベントを防ぐため、
+        先にイベントを解除する。
+      */
+      audio.onended = null;
+      audio.onerror = null;
+
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+
       audioRef.current = null;
     }
 
@@ -545,6 +560,7 @@ export default function HomePage() {
         body: JSON.stringify({
           text: translatedText,
           language,
+          voiceGender,
           style:
             tone === "polite"
               ? "careful"
@@ -846,6 +862,115 @@ export default function HomePage() {
             }}
           >
             {currentTone.description}
+          </p>
+        </section>
+
+        <section
+          style={{
+            background: "rgba(13,17,26,0.94)",
+            border: "1px solid #1c2538",
+            borderRadius: "20px",
+            padding: "14px",
+            marginBottom: "12px",
+          }}
+        >
+          <h2
+            style={{
+              margin: "0 0 10px",
+              fontSize: "15px",
+              color: "#ffffff",
+            }}
+          >
+            音声
+          </h2>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "8px",
+            }}
+          >
+            <button
+              type="button"
+              disabled={recordingSide !== null}
+              onClick={() => {
+                stopAudio();
+                setVoiceGender("female");
+              }}
+              style={{
+                minHeight: "56px",
+                padding: "10px",
+                background:
+                  voiceGender === "female"
+                    ? "#7db3ff"
+                    : "#0b111d",
+                color:
+                  voiceGender === "female"
+                    ? "#07101d"
+                    : "#e4ebf7",
+                border:
+                  voiceGender === "female"
+                    ? "1px solid #7db3ff"
+                    : "1px solid #22304a",
+                borderRadius: "13px",
+                fontFamily: "inherit",
+                fontSize: "16px",
+                fontWeight: 900,
+                cursor:
+                  recordingSide !== null
+                    ? "default"
+                    : "pointer",
+              }}
+            >
+              女性
+            </button>
+
+            <button
+              type="button"
+              disabled={recordingSide !== null}
+              onClick={() => {
+                stopAudio();
+                setVoiceGender("male");
+              }}
+              style={{
+                minHeight: "56px",
+                padding: "10px",
+                background:
+                  voiceGender === "male"
+                    ? "#7db3ff"
+                    : "#0b111d",
+                color:
+                  voiceGender === "male"
+                    ? "#07101d"
+                    : "#e4ebf7",
+                border:
+                  voiceGender === "male"
+                    ? "1px solid #7db3ff"
+                    : "1px solid #22304a",
+                borderRadius: "13px",
+                fontFamily: "inherit",
+                fontSize: "16px",
+                fontWeight: 900,
+                cursor:
+                  recordingSide !== null
+                    ? "default"
+                    : "pointer",
+              }}
+            >
+              男性
+            </button>
+          </div>
+
+          <p
+            style={{
+              margin: "9px 0 0",
+              color: "#8fa7cc",
+              fontSize: "11px",
+              lineHeight: 1.5,
+            }}
+          >
+            相手へ聞かせる音声を選択します。初期設定は女性です。
           </p>
         </section>
 
