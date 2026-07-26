@@ -534,21 +534,30 @@ export default function HomePage() {
 
   function stopRecording(side: SpeakerSide) {
     /*
-      Reactのstate更新を待たず、refで現在の録音側を判定する。
-      iPhoneで素早く指を離した場合も確実に停止できる。
+      ボタン側とwindow側のpointerupが連続して発火する場合がある。
+      recorder.stop()後、onstop完了前にrefを消すと録音データを
+      読み取れなくなるため、停止処理は一度だけ実行する。
     */
     if (recordingSideRef.current !== side) return;
 
     const recorder = mediaRecorderRef.current;
 
-    if (recorder && recorder.state !== "inactive") {
-      recorder.stop();
+    if (!recorder) {
+      setRecordingSide(null);
+      recordingSideRef.current = null;
+      stopMediaStream();
       return;
     }
 
-    setRecordingSide(null);
-    recordingSideRef.current = null;
-    stopMediaStream();
+    if (recorder.state === "inactive") {
+      /*
+        すでにstop()済み。onstopが録音データを処理するため、
+        ここではrefや音声ストリームを消さない。
+      */
+      return;
+    }
+
+    recorder.stop();
   }
 
   function cancelRecording() {
