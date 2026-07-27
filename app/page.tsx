@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ChangeEvent as ReactChangeEvent,
   PointerEvent as ReactPointerEvent,
   useEffect,
   useRef,
@@ -29,6 +30,26 @@ type ForeignResult = {
   originalText: string;
   translatedText: string;
   detectedLanguage: DetectedLanguage;
+};
+
+type ImageTranslationBlock = {
+  originalText: string;
+  translatedText: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  estimatedBackgroundColor: string;
+  textColor: string;
+};
+
+type ImageTranslationResult = {
+  detectedLanguage: {
+    code: string;
+    label: string;
+  };
+  blocks: ImageTranslationBlock[];
 };
 
 const LANGUAGES: {
@@ -201,6 +222,115 @@ function getVoiceColors(voiceGender: VoiceGender) {
   };
 }
 
+
+function loadImage(url: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("画像を読み込めませんでした。"));
+    image.src = url;
+  });
+}
+
+function splitTextToLines(
+  context: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+) {
+  const characters = Array.from(text);
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (const character of characters) {
+    if (character === "\n") {
+      if (currentLine) lines.push(currentLine);
+      currentLine = "";
+      continue;
+    }
+
+    const nextLine = `${currentLine}${character}`;
+
+    if (
+      currentLine &&
+      context.measureText(nextLine).width > maxWidth
+    ) {
+      lines.push(currentLine);
+      currentLine = character;
+    } else {
+      currentLine = nextLine;
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines.length > 0 ? lines : [""];
+}
+
+function drawTranslatedBlock(
+  context: CanvasRenderingContext2D,
+  canvasWidth: number,
+  canvasHeight: number,
+  block: ImageTranslationBlock
+) {
+  const x = block.x * canvasWidth;
+  const y = block.y * canvasHeight;
+  const width = block.width * canvasWidth;
+  const height = block.height * canvasHeight;
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const padding = Math.max(3, Math.min(width, height) * 0.06);
+  const innerWidth = Math.max(1, width - padding * 2);
+  const innerHeight = Math.max(1, height - padding * 2);
+
+  context.save();
+  context.translate(centerX, centerY);
+  context.rotate((block.rotation * Math.PI) / 180);
+
+  context.fillStyle = block.estimatedBackgroundColor || "#FFFFFF";
+  context.fillRect(-width / 2, -height / 2, width, height);
+
+  let fontSize = Math.max(10, Math.min(height * 0.72, width * 0.28));
+  let lines: string[] = [];
+  let lineHeight = 0;
+
+  while (fontSize >= 8) {
+    context.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif`;
+    lines = splitTextToLines(
+      context,
+      block.translatedText,
+      innerWidth
+    );
+    lineHeight = fontSize * 1.16;
+
+    if (lines.length * lineHeight <= innerHeight) {
+      break;
+    }
+
+    fontSize -= 1;
+  }
+
+  context.fillStyle = block.textColor || "#111111";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+
+  const firstLineY =
+    -((lines.length - 1) * lineHeight) / 2;
+
+  lines.forEach((line, index) => {
+    context.fillText(
+      line,
+      0,
+      firstLineY + index * lineHeight,
+      innerWidth
+    );
+  });
+
+  context.restore();
+}
+
 export default function HomePage() {
   const [language, setLanguage] =
     useState<TargetLanguage>("english");
@@ -235,6 +365,17 @@ export default function HomePage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [autoChangedMessage, setAutoChangedMessage] = useState("");
 
+  const [selectedImageName, setSelectedImageName] = useState("");
+  const [selectedImageUrl, setSelectedImageUrl] = useState("");
+  const [selectedImageFile, setSelectedImageFile] =
+    useState<File | null>(null);
+  const [analyzingImage, setAnalyzingImage] = useState(false);
+  const [imageTranslationResult, setImageTranslationResult] =
+    useState<ImageTranslationResult | null>(null);
+  const [translatedImageUrl, setTranslatedImageUrl] = useState("");
+  const [imageView, setImageView] =
+    useState<"original" | "translated">("original");
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -245,6 +386,10 @@ export default function HomePage() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
+
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const selectedImageUrlRef = useRef<string | null>(null);
+  const translatedImageUrlRef = useRef<string | null>(null);
 
   const currentLanguage =
     LANGUAGES.find((item) => item.key === language) ?? LANGUAGES[0];
@@ -383,6 +528,14 @@ export default function HomePage() {
       translateAbortRef.current?.abort();
       stopMediaStream();
       stopAudio();
+
+      if (selectedImageUrlRef.current) {
+        URL.revokeObjectURL(selectedImageUrlRef.current);
+      }
+
+      if (translatedImageUrlRef.current) {
+        URL.revokeObjectURL(translatedImageUrlRef.current);
+      }
     };
   }, []);
 
@@ -428,6 +581,208 @@ export default function HomePage() {
     setTranslatedText("");
     setErrorMessage("");
     setTranslatingJapanese(false);
+  }
+
+  function openImagePicker() {
+    imageInputRef.current?.click();
+  }
+
+  function handleImageChange(
+    event: ReactChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setErrorMessage("画像ファイルを選択してください。");
+      event.target.value = "";
+      return;
+    }
+
+    if (selectedImageUrlRef.current) {
+      URL.revokeObjectURL(selectedImageUrlRef.current);
+    }
+
+    const nextImageUrl = URL.createObjectURL(file);
+
+    selectedImageUrlRef.current = nextImageUrl;
+    setSelectedImageUrl(nextImageUrl);
+    setSelectedImageName(file.name);
+    setSelectedImageFile(file);
+    setImageTranslationResult(null);
+    setImageView("original");
+
+    if (translatedImageUrlRef.current) {
+      URL.revokeObjectURL(translatedImageUrlRef.current);
+      translatedImageUrlRef.current = null;
+    }
+
+    setTranslatedImageUrl("");
+    setErrorMessage("");
+
+    event.target.value = "";
+  }
+
+  async function createTranslatedImage(
+    sourceUrl: string,
+    blocks: ImageTranslationBlock[]
+  ) {
+    const image = await loadImage(sourceUrl);
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("画像編集を開始できませんでした。");
+    }
+
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    for (const block of blocks) {
+      drawTranslatedBlock(
+        context,
+        canvas.width,
+        canvas.height,
+        block
+      );
+    }
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", 0.94);
+    });
+
+    if (!blob) {
+      throw new Error("日本語化画像を作成できませんでした。");
+    }
+
+    if (translatedImageUrlRef.current) {
+      URL.revokeObjectURL(translatedImageUrlRef.current);
+    }
+
+    const nextUrl = URL.createObjectURL(blob);
+    translatedImageUrlRef.current = nextUrl;
+    setTranslatedImageUrl(nextUrl);
+    setImageView("translated");
+  }
+
+  async function saveTranslatedImage() {
+    if (!translatedImageUrl) return;
+
+    setErrorMessage("");
+
+    try {
+      const response = await fetch(translatedImageUrl);
+
+      if (!response.ok) {
+        throw new Error("保存用画像を準備できませんでした。");
+      }
+
+      const blob = await response.blob();
+      const baseName =
+        selectedImageName.replace(/\.[^/.]+$/, "").trim() ||
+        "translated-image";
+      const fileName = `${baseName}-日本語化.jpg`;
+      const file = new File([blob], fileName, {
+        type: "image/jpeg",
+      });
+
+      if (
+        typeof navigator.share === "function" &&
+        typeof navigator.canShare === "function" &&
+        navigator.canShare({ files: [file] })
+      ) {
+        await navigator.share({
+          files: [file],
+          title: "日本語化画像",
+        });
+        return;
+      }
+
+      const link = document.createElement("a");
+      link.href = translatedImageUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        error.name === "AbortError"
+      ) {
+        return;
+      }
+
+      console.error(error);
+
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "画像を保存できませんでした。"
+      );
+    }
+  }
+
+  async function analyzeSelectedImage() {
+    if (!selectedImageFile || analyzingImage) return;
+
+    setAnalyzingImage(true);
+    setImageTranslationResult(null);
+    setErrorMessage("");
+
+    try {
+      const formData = new FormData();
+      formData.append("image", selectedImageFile);
+
+      const response = await fetch("/api/image-translate", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error || "画像の解析に失敗しました。"
+        );
+      }
+
+      const blocks = Array.isArray(data?.blocks)
+        ? data.blocks
+        : [];
+
+      const result: ImageTranslationResult = {
+        detectedLanguage: {
+          code: String(
+            data?.detectedLanguage?.code ?? "unknown"
+          ),
+          label: String(
+            data?.detectedLanguage?.label ?? "不明な言語"
+          ),
+        },
+        blocks,
+      };
+
+      setImageTranslationResult(result);
+
+      if (blocks.length > 0 && selectedImageUrl) {
+        await createTranslatedImage(selectedImageUrl, blocks);
+      } else {
+        setImageView("original");
+      }
+    } catch (error) {
+      console.error(error);
+
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "画像の解析に失敗しました。"
+      );
+    } finally {
+      setAnalyzingImage(false);
+    }
   }
 
   async function startRecording(side: SpeakerSide) {
@@ -1715,6 +2070,319 @@ export default function HomePage() {
               </p>
             </div>
           </div>
+        </section>
+
+        <section
+          style={{
+            marginTop: "14px",
+            background: "rgba(13,17,26,0.94)",
+            border: "1px solid #1c2538",
+            borderRadius: "22px",
+            padding: "16px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={openImagePicker}
+              style={{
+                flexShrink: 0,
+                minHeight: "58px",
+                padding: "12px 16px",
+                background:
+                  "linear-gradient(180deg, #9d8dff, #6f62df)",
+                color: "#100b2c",
+                border: "1px solid #b9aeff",
+                borderRadius: "15px",
+                fontFamily: "inherit",
+                fontSize: "16px",
+                fontWeight: 900,
+                cursor: "pointer",
+                boxShadow:
+                  "0 8px 20px rgba(111,98,223,0.24)",
+              }}
+            >
+              ＋ 写真を翻訳
+            </button>
+
+            <p
+              style={{
+                margin: 0,
+                color: "#aab8cf",
+                fontSize: "12px",
+                lineHeight: 1.6,
+              }}
+            >
+              お店のメニュー、看板、道路標識などをスクショして日本語に変換します。
+            </p>
+          </div>
+
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleImageChange}
+            style={{ display: "none" }}
+          />
+
+          {selectedImageUrl && (
+            <>
+              {translatedImageUrl && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "8px",
+                    marginTop: "14px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setImageView("original")}
+                    style={{
+                      minHeight: "48px",
+                      background:
+                        imageView === "original"
+                          ? "#7db3ff"
+                          : "#0d1421",
+                      color:
+                        imageView === "original"
+                          ? "#07101d"
+                          : "#e4ebf7",
+                      border:
+                        imageView === "original"
+                          ? "1px solid #9ac8ff"
+                          : "1px solid #263550",
+                      borderRadius: "12px",
+                      fontFamily: "inherit",
+                      fontSize: "14px",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                    }}
+                  >
+                    元画像
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setImageView("translated")}
+                    style={{
+                      minHeight: "48px",
+                      background:
+                        imageView === "translated"
+                          ? "#8fe0b1"
+                          : "#0d1421",
+                      color:
+                        imageView === "translated"
+                          ? "#061b0e"
+                          : "#e4ebf7",
+                      border:
+                        imageView === "translated"
+                          ? "1px solid #a8ebc4"
+                          : "1px solid #263550",
+                      borderRadius: "12px",
+                      fontFamily: "inherit",
+                      fontSize: "14px",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                    }}
+                  >
+                    日本語化画像
+                  </button>
+                </div>
+              )}
+
+              <div
+                style={{
+                  marginTop: "14px",
+                  overflow: "hidden",
+                  background: "#070b14",
+                  border: "1px solid #24304a",
+                  borderRadius: "16px",
+                }}
+              >
+                <img
+                  src={
+                    imageView === "translated" && translatedImageUrl
+                      ? translatedImageUrl
+                      : selectedImageUrl
+                  }
+                  alt={
+                    imageView === "translated"
+                      ? "日本語化した画像"
+                      : "選択した翻訳対象"
+                  }
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    height: "auto",
+                    maxHeight: "520px",
+                    objectFit: "contain",
+                  }}
+                />
+
+                <p
+                  style={{
+                    margin: 0,
+                    padding: "10px 12px",
+                    color: "#8fa7cc",
+                    fontSize: "11px",
+                    lineHeight: 1.5,
+                    wordBreak: "break-all",
+                  }}
+                >
+                  選択した画像：{selectedImageName}
+                </p>
+              </div>
+
+              {translatedImageUrl && (
+                <button
+                  type="button"
+                  onClick={() => void saveTranslatedImage()}
+                  style={{
+                    width: "100%",
+                    minHeight: "58px",
+                    marginTop: "12px",
+                    padding: "13px",
+                    background:
+                      "linear-gradient(180deg, #ffd66f, #e7aa35)",
+                    color: "#241600",
+                    border: "1px solid #ffe39a",
+                    borderRadius: "16px",
+                    fontFamily: "inherit",
+                    fontSize: "16px",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    boxShadow:
+                      "0 8px 20px rgba(231,170,53,0.24)",
+                  }}
+                >
+                  ↓ 日本語化画像を保存
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={analyzingImage}
+                onClick={() => void analyzeSelectedImage()}
+                style={{
+                  width: "100%",
+                  minHeight: "60px",
+                  marginTop: "12px",
+                  padding: "13px",
+                  background: analyzingImage
+                    ? "#334155"
+                    : "linear-gradient(180deg, #8fe0b1, #58b77d)",
+                  color: analyzingImage ? "#8794a8" : "#061b0e",
+                  border: analyzingImage
+                    ? "1px solid #475569"
+                    : "1px solid #a8ebc4",
+                  borderRadius: "16px",
+                  fontFamily: "inherit",
+                  fontSize: "17px",
+                  fontWeight: 900,
+                  cursor: analyzingImage ? "default" : "pointer",
+                  boxShadow: analyzingImage
+                    ? "none"
+                    : "0 8px 20px rgba(88,183,125,0.24)",
+                }}
+              >
+                {analyzingImage
+                  ? "画像内の文字を解析中..."
+                  : "画像内の文字を日本語へ翻訳"}
+              </button>
+            </>
+          )}
+
+          {imageTranslationResult && (
+            <div
+              style={{
+                marginTop: "12px",
+                padding: "14px",
+                background: "#080d17",
+                border: "1px solid #263550",
+                borderRadius: "16px",
+              }}
+            >
+              <p
+                style={{
+                  margin: "0 0 10px",
+                  color: "#dbe5f4",
+                  fontSize: "14px",
+                  fontWeight: 900,
+                }}
+              >
+                検知した言語：
+                {imageTranslationResult.detectedLanguage.label}
+              </p>
+
+              {imageTranslationResult.blocks.length === 0 ? (
+                <p
+                  style={{
+                    margin: 0,
+                    color: "#91a1bb",
+                    fontSize: "13px",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  翻訳できる外国語が見つかりませんでした。
+                </p>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "8px",
+                  }}
+                >
+                  {imageTranslationResult.blocks.map(
+                    (block, index) => (
+                      <div
+                        key={`${block.originalText}-${index}`}
+                        style={{
+                          padding: "11px",
+                          background: "#0b111d",
+                          border: "1px solid #22304a",
+                          borderRadius: "12px",
+                        }}
+                      >
+                        <p
+                          style={{
+                            margin: "0 0 5px",
+                            color: "#8fa7cc",
+                            fontSize: "11px",
+                            lineHeight: 1.5,
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {block.originalText}
+                        </p>
+
+                        <p
+                          style={{
+                            margin: 0,
+                            color: "#ffffff",
+                            fontSize: "17px",
+                            fontWeight: 800,
+                            lineHeight: 1.5,
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {block.translatedText}
+                        </p>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </section>
       </div>
       </main>
