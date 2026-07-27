@@ -269,6 +269,45 @@ function splitTextToLines(
   return lines.length > 0 ? lines : [""];
 }
 
+async function prepareImageForUpload(
+  sourceUrl: string,
+  originalName: string
+) {
+  const image = await loadImage(sourceUrl);
+  const maxDimension = 2048;
+  const scale = Math.min(
+    1,
+    maxDimension / Math.max(image.naturalWidth, image.naturalHeight)
+  );
+
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("画像を変換できませんでした。");
+  }
+
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, "image/jpeg", 0.88);
+  });
+
+  if (!blob) {
+    throw new Error("画像をJPEGへ変換できませんでした。");
+  }
+
+  const baseName =
+    originalName.replace(/\.[^/.]+$/, "").trim() || "photo";
+
+  return new File([blob], `${baseName}.jpg`, {
+    type: "image/jpeg",
+  });
+}
+
 function drawTranslatedBlock(
   context: CanvasRenderingContext2D,
   canvasWidth: number,
@@ -733,8 +772,13 @@ export default function HomePage() {
     setErrorMessage("");
 
     try {
+      const uploadFile = await prepareImageForUpload(
+        selectedImageUrl,
+        selectedImageFile.name
+      );
+
       const formData = new FormData();
-      formData.append("image", selectedImageFile);
+      formData.append("image", uploadFile);
 
       const response = await fetch("/api/image-translate", {
         method: "POST",
