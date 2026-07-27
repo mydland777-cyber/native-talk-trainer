@@ -87,6 +87,42 @@ function normalizeColor(value: unknown, fallback: string) {
   return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
 }
 
+
+function containsJapanese(text: string) {
+  return /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
+}
+
+function normalizeComparableText(text: string) {
+  return text
+    .normalize("NFKC")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
+function looksLikeTechnicalToken(text: string) {
+  const trimmed = text.trim();
+
+  if (!trimmed) return true;
+
+  if (
+    /(?:https?:\/\/|www\.|@)/i.test(trimmed) ||
+    /\.(?:svg|png|jpe?g|gif|webp|ts|tsx|js|jsx|json|md|mjs|cjs|css|html|env|lock)$/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  const tokens = trimmed.split(/\s+/);
+
+  if (
+    tokens.length >= 2 &&
+    tokens.every((token) => /^[A-Za-z0-9_.\-\/\\]+$/.test(token))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function normalizeResult(value: unknown): ImageTranslationResult {
   const source =
     value && typeof value === "object"
@@ -124,12 +160,36 @@ function normalizeResult(value: unknown): ImageTranslationResult {
             return null;
           }
 
+          if (
+            normalizeComparableText(originalText) ===
+            normalizeComparableText(translatedText)
+          ) {
+            return null;
+          }
+
+          if (!containsJapanese(translatedText)) {
+            return null;
+          }
+
+          if (looksLikeTechnicalToken(originalText)) {
+            return null;
+          }
+
           const x = clampNumber(block.x, 0, 1);
           const y = clampNumber(block.y, 0, 1);
           const width = clampNumber(block.width, 0, 1 - x);
           const height = clampNumber(block.height, 0, 1 - y);
 
           if (width <= 0 || height <= 0) {
+            return null;
+          }
+
+          const area = width * height;
+
+          if (
+            area > 0.28 ||
+            (originalText.length > 90 && area > 0.12)
+          ) {
             return null;
           }
 
@@ -266,8 +326,15 @@ export async function POST(request: Request) {
                     "xとyは文字領域の左上、widthとheightは領域の幅と高さです。",
                     "rotationは文字の傾きを度数で返してください。",
                     "背景色と文字色は必ず#RRGGBB形式で推定してください。",
-                    "同じ行や同じ看板内で意味がつながる文字は、できるだけ1つのblockにまとめてください。",
+                    "文字ブロックは必ず視覚上の1行ごとに分けてください。",
+                    "離れた行、離れた看板、別々のメニュー項目を1つのblockへまとめてはいけません。",
+                    "座標は文字の外周ぎりぎりにしてください。広い背景全体を囲まないでください。",
                     "値段、数字、通貨記号、商品番号は省略しないでください。",
+                    "ファイル名、拡張子、URL、メールアドレス、プログラムコード、変数名、コマンド、製品型番は翻訳対象に含めないでください。",
+                    "固有名詞だけで日本語訳が不自然になる文字も翻訳対象に含めないでください。",
+                    "translatedTextは必ず自然な日本語にしてください。",
+                    "originalTextとtranslatedTextが同じになるblockは返してはいけません。",
+                    "translatedTextに日本語文字が1文字も含まれないblockは返してはいけません。",
                     "日本語の文字は翻訳対象に含めないでください。",
                     "画像に翻訳対象の外国語がなければblocksを空配列にしてください。",
                   ].join("\n"),
