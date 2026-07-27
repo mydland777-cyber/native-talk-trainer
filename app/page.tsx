@@ -772,13 +772,8 @@ export default function HomePage() {
     setErrorMessage("");
 
     try {
-      const uploadFile = await prepareImageForUpload(
-        selectedImageUrl,
-        selectedImageFile.name
-      );
-
       const formData = new FormData();
-      formData.append("image", uploadFile);
+      formData.append("image", selectedImageFile);
 
       const response = await fetch("/api/image-translate", {
         method: "POST",
