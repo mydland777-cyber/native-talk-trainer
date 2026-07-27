@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 type ImageTextBlock = {
   originalText: string;
@@ -300,7 +300,7 @@ export async function POST(request: Request) {
       image.type
     };base64,${imageBuffer.toString("base64")}`;
 
-    const openAiResponse = await fetch(
+    const firstOpenAiResponse = await fetch(
       "https://api.openai.com/v1/responses",
       {
         method: "POST",
@@ -322,6 +322,9 @@ export async function POST(request: Request) {
                   text: [
                     "あなたは旅行写真専門のOCR・翻訳解析器です。",
                     "画像内の外国語を読み取り、日本語へ自然に翻訳してください。",
+                    "画像を左上から右下まで順番に走査し、見える外国語をすべて確認してください。",
+                    "小さい文字、薄い文字、途中で切れている行、近くに日本語がある外国語も省略しないでください。",
+                    "見出し、本文、注釈、値段、短い案内文をすべて対象にしてください。",
                     "メニュー、看板、道路標識などの文字領域を、画像全体に対する0〜1の正規化座標で返してください。",
                     "xとyは文字領域の左上、widthとheightは領域の幅と高さです。",
                     "rotationは文字の傾きを度数で返してください。",
@@ -336,6 +339,7 @@ export async function POST(request: Request) {
                     "originalTextとtranslatedTextが同じになるblockは返してはいけません。",
                     "translatedTextに日本語文字が1文字も含まれないblockは返してはいけません。",
                     "日本語の文字は翻訳対象に含めないでください。",
+                    "返答前に画像上端、中央、下端を再確認し、外国語の読み取り漏れがないか確認してください。",
                     "画像に翻訳対象の外国語がなければblocksを空配列にしてください。",
                   ].join("\n"),
                 },
@@ -437,30 +441,30 @@ export async function POST(request: Request) {
       }
     );
 
-    const openAiData = await openAiResponse.json();
+    const firstOpenAiData = await firstOpenAiResponse.json();
 
-    if (!openAiResponse.ok) {
+    if (!firstOpenAiResponse.ok) {
       console.error(
         "OpenAI image translation error:",
-        openAiData
+        firstOpenAiData
       );
 
       const errorMessage =
-        openAiData &&
-        typeof openAiData === "object" &&
-        "error" in openAiData &&
-        openAiData.error &&
-        typeof openAiData.error === "object" &&
-        "message" in openAiData.error
-          ? String(openAiData.error.message)
+        firstOpenAiData &&
+        typeof firstOpenAiData === "object" &&
+        "error" in firstOpenAiData &&
+        firstOpenAiData.error &&
+        typeof firstOpenAiData.error === "object" &&
+        "message" in firstOpenAiData.error
+          ? String(firstOpenAiData.error.message)
           : "画像の解析に失敗しました。";
 
       throw new Error(errorMessage);
     }
 
-    const outputText = extractOutputText(openAiData);
+    const firstOutputText = extractOutputText(firstOpenAiData);
 
-    if (!outputText) {
+    if (!firstOutputText) {
       throw new Error(
         "画像解析結果を取得できませんでした。"
       );
@@ -469,11 +473,11 @@ export async function POST(request: Request) {
     let parsedResult: unknown;
 
     try {
-      parsedResult = JSON.parse(outputText);
+      parsedResult = JSON.parse(firstOutputText);
     } catch {
       console.error(
         "Invalid image translation JSON:",
-        outputText
+        firstOutputText
       );
 
       throw new Error(
@@ -481,9 +485,177 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = normalizeResult(parsedResult);
+    const firstResult = normalizeResult(parsedResult);
 
-    return NextResponse.json(result);
+    const verificationResponse = await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model:
+            process.env.OPENAI_IMAGE_MODEL ||
+            "gpt-4.1-mini",
+          temperature: 0,
+          input: [
+            {
+              role: "system",
+              content: [
+                {
+                  type: "input_text",
+                  text: [
+                    "あなたは画像OCR結果の検査担当です。",
+                    "元画像と1回目の解析結果を比較してください。",
+                    "画像を左上から右下まで再走査し、1回目で抜けた外国語を追加してください。",
+                    "小さい文字、薄い文字、途中で切れている行、見出し、注釈、値段も確認してください。",
+                    "既に正しく含まれているblockは維持してください。",
+                    "重複blockは作らないでください。",
+                    "日本語は翻訳対象に含めず、元画像のまま残してください。",
+                    "文字ブロックは視覚上の1行ごとに分けてください。",
+                    "座標は文字の外周ぎりぎりにしてください。",
+                    "translatedTextは必ず自然な日本語にしてください。",
+                    "originalTextとtranslatedTextが同じblockは返さないでください。",
+                    "最終的な完全版だけを返してください。",
+                  ].join("\n"),
+                },
+              ],
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: [
+                    "1回目の解析結果です。",
+                    JSON.stringify(firstResult),
+                    "元画像と照合し、読み取り漏れを補完した完全版を返してください。",
+                  ].join("\n"),
+                },
+                {
+                  type: "input_image",
+                  image_url: imageDataUrl,
+                  detail: "high",
+                },
+              ],
+            },
+          ],
+          text: {
+            format: {
+              type: "json_schema",
+              name: "verified_image_translation_result",
+              strict: true,
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  detectedLanguage: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      code: {
+                        type: "string",
+                      },
+                      label: {
+                        type: "string",
+                      },
+                    },
+                    required: ["code", "label"],
+                  },
+                  blocks: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        originalText: {
+                          type: "string",
+                        },
+                        translatedText: {
+                          type: "string",
+                        },
+                        x: {
+                          type: "number",
+                        },
+                        y: {
+                          type: "number",
+                        },
+                        width: {
+                          type: "number",
+                        },
+                        height: {
+                          type: "number",
+                        },
+                        rotation: {
+                          type: "number",
+                        },
+                        estimatedBackgroundColor: {
+                          type: "string",
+                        },
+                        textColor: {
+                          type: "string",
+                        },
+                      },
+                      required: [
+                        "originalText",
+                        "translatedText",
+                        "x",
+                        "y",
+                        "width",
+                        "height",
+                        "rotation",
+                        "estimatedBackgroundColor",
+                        "textColor",
+                      ],
+                    },
+                  },
+                },
+                required: [
+                  "detectedLanguage",
+                  "blocks",
+                ],
+              },
+            },
+          },
+        }),
+      }
+    );
+
+    if (!verificationResponse.ok) {
+      console.error(
+        "OpenAI verification error:",
+        await verificationResponse.text()
+      );
+
+      return NextResponse.json(firstResult);
+    }
+
+    const verificationData =
+      await verificationResponse.json();
+
+    const verificationText =
+      extractOutputText(verificationData);
+
+    if (!verificationText) {
+      return NextResponse.json(firstResult);
+    }
+
+    try {
+      const verifiedResult = normalizeResult(
+        JSON.parse(verificationText)
+      );
+
+      return NextResponse.json(verifiedResult);
+    } catch {
+      console.error(
+        "Invalid verification JSON:",
+        verificationText
+      );
+
+      return NextResponse.json(firstResult);
+    }
   } catch (error) {
     console.error(error);
 
